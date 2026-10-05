@@ -87,6 +87,7 @@ table.grid{border-collapse:collapse;width:100%;font-size:13px}
 .grid input:hover,.grid select:hover,.grid textarea:hover{border-color:var(--rule)}
 .grid input:focus,.grid select:focus,.grid textarea:focus{border-color:var(--accent);background:#fff;outline:none}
 .grid input[type=checkbox]{margin:8px}
+.grid input.inline{min-width:200px}
 .grid td.act,.grid th.act{width:32px;text-align:center}
 .grid td.empty{padding:14px;color:var(--mute);text-align:center}
 .grid .calc{display:block;padding:5px 6px;white-space:nowrap}
@@ -96,7 +97,7 @@ table.kv{border-collapse:collapse;font-size:13px;width:100%}
 .kv th{text-align:left;color:var(--steel);font-weight:500;padding:4px 12px 4px 0;white-space:nowrap;width:1%}
 .kv td{padding:4px 0}
 .pill{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;font-weight:600;white-space:nowrap}
-.pill.ok{background:var(--ok-soft);color:var(--ok)}.pill.warn{background:var(--warn-soft);color:var(--warn)}.pill.crit{background:var(--crit-soft);color:var(--crit)}.pill.info{background:var(--accent-soft);color:var(--accent-ink)}.pill.none{background:var(--paper);color:var(--steel)}
+.pill.med{background:#FBF3C2;color:#6E5600}.pill.ok{background:var(--ok-soft);color:var(--ok)}.pill.warn{background:var(--warn-soft);color:var(--warn)}.pill.crit{background:var(--crit-soft);color:var(--crit)}.pill.info{background:var(--accent-soft);color:var(--accent-ink)}.pill.none{background:var(--paper);color:var(--steel)}
 .cat{display:inline-grid;place-items:center;width:26px;height:22px;border-radius:4px;font-weight:700;font-size:12px;color:var(--ink)}
 .cat0{background:var(--c0)}.cat1{background:var(--c1)}.cat2{background:var(--c2)}.cat3{background:var(--c3)}.cat4{background:var(--c4);color:#fff}
 .split{display:grid;grid-template-columns:300px 1fr;gap:16px;align-items:start}
@@ -162,7 +163,7 @@ dialog::backdrop{background:rgba(22,35,43,.45)}
 <script>
 /*STATS-BEGIN*/
 const OHStats = (() => {
-  const VERSION = '1.0.0';
+  const VERSION = '1.1.0';
 
   // ---------- basic distributions ----------
   function normCdf(x) {
@@ -280,6 +281,42 @@ const OHStats = (() => {
     return normCdf(-((lo + hi) / 2) / Math.sqrt(n));
   }
 
+
+  // ---------- AM 95% UCL by generalized confidence interval (Krishnamoorthy & Mathew 2003) ----------
+  // Closely approximates Land's exact UCL (as reported by IHSTAT). Seeded, so results are reproducible.
+  function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+  function amUclGCI(ybar, s, n, conf = 0.95, M = 100000, seed = 20190801) {
+    if (n < 2 || !(s > 0)) return NaN;
+    const R = rng(seed);
+    const nrm = () => { let u = 0; while (u === 0) u = R(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * R()); };
+    const gam = k => { // Marsaglia-Tsang
+      if (k < 1) { let u = 0; while (u === 0) u = R(); return gam(k + 1) * Math.pow(u, 1 / k); }
+      const d = k - 1 / 3, c = 1 / Math.sqrt(9 * d);
+      for (;;) { let x, v; do { x = nrm(); v = 1 + c * x; } while (v <= 0); v = v * v * v; const u = R();
+        if (u < 1 - 0.0331 * x ** 4 || Math.log(u) < 0.5 * x * x + d * (1 - v + Math.log(v))) return d * v; }
+    };
+    const df = n - 1, T = new Float64Array(M), k = df / 2;
+    for (let i = 0; i < M; i++) { const U = 2 * gam(k), Z = nrm(); T[i] = ybar - Z * (s / Math.sqrt(n)) * Math.sqrt(df / U) + 0.5 * df * s * s / U; }
+    T.sort();
+    return Math.exp(T[Math.floor(conf * M)]);
+  }
+
+  // ---------- ADNOC HSE-OH-ST03 (OHRM, Aug 2019) Appendix 3 and Appendix 2 rules ----------
+  // Matrix read from Appendix 9: R = High/Cat 1, O = High-Medium/Cat 2, Y = Medium/Cat 3, G = Low/Cat 4
+  const ADNOC_MATRIX = { 6: 'ORRRRR', 5: 'YORRRR', 4: 'YYORRR', 3: 'GYYOOR', 2: 'GGYYYO', 1: 'GGGGYY' };
+  const ADNOC_CAT = { R: { n: 1, label: 'High / Category 1' }, O: { n: 2, label: 'High-Medium / Category 2' }, Y: { n: 3, label: 'Medium / Category 3' }, G: { n: 4, label: 'Low / Category 4' } };
+  function adnocHRR(sev, like) {
+    const row = ADNOC_MATRIX[Number(sev)], i = 'ABCDEF'.indexOf(String(like || '').toUpperCase());
+    if (!row || i < 0) return null;
+    const k = row[i]; return { code: String(sev) + 'ABCDEF'[i], key: k, n: ADNOC_CAT[k].n, label: ADNOC_CAT[k].label };
+  }
+  // Appendix 3 Table 3: quantitative likelihood from 95% UCL as a fraction of OEL
+  function adnocQuantLikelihood(r) { if (!(r >= 0)) return null; return r >= 2 ? 'F' : r > 1 ? 'E' : r > 0.5 ? 'D' : r > 0.1 ? 'C' : r > 0.01 ? 'B' : 'A'; }
+  // Appendix 2 (a)(ii)-2 survey frequency (the section cited by clause 7(h))
+  function adnocFrequency(r) { if (!(r >= 0)) return null; return r < 0.01 ? 'Every 5 years' : r < 0.1 ? 'Every 4 years' : r < 0.5 ? 'Every 3 years' : r <= 1 ? 'Annual' : 'Reassess after added controls; repeat until below OEL'; }
+  // Appendix 3 Table 1: qualitative likelihood by exposure hours per week (frequency criterion only)
+  function adnocLikeFromHours(h) { if (h === null || h === undefined || h === '' || isNaN(h)) return null; h = Number(h); return h > 40 ? 'F' : h > 30 ? 'E' : h > 20 ? 'D' : h > 10 ? 'C' : h > 5 ? 'B' : 'A'; }
+
   const EN689_PRELIM = { 3: 0.1, 4: 0.15, 5: 0.2 };
   function aihaCategory(ratio) {
     if (ratio <= 0.01) return 0; if (ratio <= 0.1) return 1; if (ratio <= 0.5) return 2; if (ratio <= 1) return 3; return 4;
@@ -312,6 +349,7 @@ const OHStats = (() => {
       const tq = tInv(0.95, n - 1);
       out.amUclCox = Math.exp(ybar + s * s / 2 + tq * Math.sqrt(s * s / n + s ** 4 / (2 * (n - 1))));
     }
+    out.amUcl = amUclGCI(ybar, s, n, 0.95);
     if (out.gsd > 3) out.flags.push('GSD > 3: review SEG homogeneity (EN 689).');
     if (out.nd / n > 0.5) out.flags.push('More than 50% non-detects.');
     if (out.ppcc < 0.9 && n >= 5) out.flags.push('Poor lognormal fit (probability-plot r < 0.90): check for mixed groups.');
@@ -347,14 +385,14 @@ const OHStats = (() => {
     return Number(x.toPrecision(d)).toString();
   }
 
-  return { VERSION, normCdf, normInv, nctCdf, nctInv, tInv, kFactor, briefScala, ros, ppcc, efUCL, aihaCategory, analyse, fmt, mean, sd };
+  return { VERSION, amUclGCI, adnocHRR, adnocQuantLikelihood, adnocFrequency, adnocLikeFromHours, ADNOC_MATRIX, ADNOC_CAT, normCdf, normInv, nctCdf, nctInv, tInv, kFactor, briefScala, ros, ppcc, efUCL, aihaCategory, analyse, fmt, mean, sd };
 })();
 /*STATS-END*/
 
 </script>
 <script>
 'use strict';
-const APP = { name: 'OHA Studio', version: '1.0.0', format: 'ohastudio-engagement', formatVersion: 1 };
+const APP = { name: 'OHA Studio', version: '1.1.0', format: 'ohastudio-engagement', formatVersion: 1 };
 const STORE_KEY = 'ohastudio.autosave.v1', AI_KEY = 'ohastudio.ai.v1';
 const F = OHStats.fmt;
 
@@ -365,10 +403,10 @@ function blank() {
     user: '',
     engagement: { client: '', site: '', country: '', type: 'Baseline OHA', trigger: '', start: '', end: '', consultant: '', principal: '', climate: 'Hot (Gulf / desert)',
       facilities: ['Process units'], workforce: ['Own staff', 'Contractors'], seasons: ['Summer'], exclusions: '' },
-    decision: { oelRule: 'Most protective of applicable limits', statTest: 'AIHA and EN 689 (both)', confAIHA: 0.95, confEN: 0.70, shiftModel: 'Brief & Scala', minN: 6, sources: '', locked: false, lockedBy: '', lockedAt: '' },
+    decision: { framework: 'Generic (AIHA / EN 689)', uclBasis: 'AM UCL95', oelRule: 'Most protective of applicable limits', statTest: 'AIHA and EN 689 (both)', confAIHA: 0.95, confEN: 0.70, shiftModel: 'Brief & Scala', minN: 6, sources: '', locked: false, lockedBy: '', lockedAt: '' },
     kickoff: { date: '', attendees: '', access: '', h2s: '', notes: '' },
     datareq: [], areas: [], agents: [], oels: [], tasks: [], screening: [], concerns: [],
-    segs: [], profiles: [], samples: [], equipment: [], labs: [], controls: [], recs: [], moc: [],
+    segs: [], profiles: [], samples: [], equipment: [], labs: [], controls: [], recs: [], moc: [], team: [], adnoc: null,
     handover: { date: '', recipient: '', notes: '' },
     report: { title: 'Occupational Hygiene Assessment', ref: '', revision: 'A', summary: '', summaryIsAI: false, conclusions: '', limitationsExtra: '' },
     qaAck: {}, signoff: null, audit: []
@@ -380,7 +418,7 @@ let UI = { tab: 'home', profileId: null, reportHtml: '' };
 let AI = loadAI();
 
 function loadLocal() { try { const t = localStorage.getItem(STORE_KEY); return t ? migrate(JSON.parse(t)) : null; } catch (e) { return null; } }
-function migrate(d) { const b = blank(); for (const k in b) if (d[k] === undefined) d[k] = b[k]; for (const k of ['engagement', 'decision', 'kickoff', 'handover', 'report']) d[k] = Object.assign({}, b[k], d[k]); return d; }
+function migrate(d) { const b = blank(); for (const k in b) if (d[k] === undefined) d[k] = b[k]; for (const k of ['engagement', 'decision', 'kickoff', 'handover', 'report']) d[k] = Object.assign({}, b[k], d[k]); if (d.adnoc && typeof adnocBlank === 'function') d.adnoc = Object.assign(adnocBlank(), d.adnoc); return d; }
 function saveLocal() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(S)); setSave('Autosaved ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })); }
   catch (e) { setSave('Autosave failed: storage full. Save to file now.'); }
@@ -431,11 +469,13 @@ const L = {
   seasons: ['Summer', 'Winter'],
   climate: ['Hot (Gulf / desert)', 'Temperate', 'Cold', 'Tropical humid'],
   oelRule: ['Most protective of applicable limits', 'Legal limit first, then company, then advisory', 'Specified source priority'],
-  statTest: ['AIHA and EN 689 (both)', 'AIHA exposure categories', 'EN 689 compliance test'],
+  statTest: ['AIHA and EN 689 (both)', 'AIHA exposure categories', 'EN 689 compliance test', 'ADNOC 95% UCL banding (HSE-OH-ST03)'],
+  framework: ['Generic (AIHA / EN 689)', 'ADNOC HSE-OH-ST03 (OHRM)'],
+  uclBasis: ['AM UCL95', 'X95 UCL95'],
   shiftModel: ['Brief & Scala', 'None (no adjustment)'],
   zone: ['Non-hazardous', 'Zone 2', 'Zone 1', 'Zone 0'],
-  cls: ['Chemical', 'Physical', 'Biological', 'Ergonomic'],
-  subcat: ['Acute toxic gas', 'Chronic chemical', 'Particulate', 'Physical agent', 'Biological', 'Ergonomic'],
+  cls: ['Chemical', 'Physical', 'Biological', 'Ergonomic', 'Psychosocial'],
+  subcat: ['Acute toxic gas', 'Chronic chemical', 'Particulate', 'Physical agent', 'Biological', 'Ergonomic', 'Psychosocial'],
   avg: ['TWA (full shift)', 'STEL (15 min)', 'Ceiling', 'Peak (logged)', 'Task'],
   status: ['Binding (legal)', 'Company standard', 'Advisory'],
   units: ['ppm', 'mg/m\u00B3', '\u00B5g/m\u00B3', 'f/cc', 'dB(A)', '\u00B0C WBGT', 'other'],
@@ -465,7 +505,7 @@ const profOpt = () => S.profiles.map(p => [p.id, profLabel(p)]);
 const C = {
   datareq: [{ f: 'item', l: 'Document / data', w: 320 }, { f: 'status', l: 'Status', t: 'select', o: L.reqStatus }, { f: 'note', l: 'Notes', w: 220 }],
   areas: [{ f: 'name', l: 'Area / unit', w: 180 }, { f: 'zone', l: 'Hazardous area', t: 'select', o: L.zone }, { f: 'process', l: 'Process description', w: 260 }, { f: 'pfd', l: 'PFD / drawing ref' }, { f: 'visited', l: 'Visited', t: 'check' }, { f: 'noVisit', l: 'Reason if not visited' }],
-  agents: [{ f: 'name', l: 'Agent', w: 170 }, { f: 'cas', l: 'CAS no.' }, { f: 'cls', l: 'Class', t: 'select', o: L.cls }, { f: 'subcat', l: 'Hazard sub-category', t: 'select', o: L.subcat, h: 'Sets the default averaging time for new exposure profiles' }, { f: 'mw', l: 'Mol. weight', t: 'num' }, { f: 'endpoints', l: 'Health effects / notations', w: 220 }, { f: 'stream', l: 'Stream conc. / source note', w: 180 }],
+  agents: [{ f: 'name', l: 'Agent', w: 170 }, { f: 'cas', l: 'CAS no.' }, { f: 'cls', l: 'Class', t: 'select', o: L.cls }, { f: 'subcat', l: 'Hazard sub-category', t: 'select', o: L.subcat, h: 'Sets the default averaging time for new exposure profiles' }, { f: 'mw', l: 'Mol. weight', t: 'num' }, { f: 'iarc', l: 'IARC group', t: 'select', o: ['1', '2A', '2B', '3', '4', 'Not classified'] }, { f: 'bei', l: 'BMGV / BEI exists', t: 'check' }, { f: 'endpoints', l: 'Health effects / notations', w: 220 }, { f: 'stream', l: 'Stream conc. / source note', w: 180 }],
   oels: [{ f: 'agentId', l: 'Agent', t: 'select', o: opt('agents') }, { f: 'source', l: 'Source', w: 150, h: 'e.g. ACGIH (licensed), OSHAD-SF, EU, EH40, company' }, { f: 'jur', l: 'Jurisdiction' }, { f: 'value', l: 'Value', t: 'num' }, { f: 'unit', l: 'Unit', t: 'select', o: L.units }, { f: 'avg', l: 'Averaging', t: 'select', o: L.avg }, { f: 'status', l: 'Legal status', t: 'select', o: L.status }, { f: 'effFrom', l: 'Effective from', t: 'date' }, { f: 'citation', l: 'Citation / edition', w: 180 }],
   tasks: [{ f: 'name', l: 'Task', w: 200 }, { f: 'areaId', l: 'Area', t: 'select', o: opt('areas') }, { f: 'roles', l: 'Roles' }, { f: 'routine', l: 'Routine?', t: 'select', o: L.routine }, { f: 'freq', l: 'Frequency', t: 'select', o: L.freq }, { f: 'dur', l: 'Duration (min)', t: 'num' }, { f: 'planned', l: 'Planned date', t: 'date' }, { f: 'ppe', l: 'PPE / RPE worn' }, { f: 'controls', l: 'Controls in use' }],
   screening: [{ f: 'date', l: 'Date', t: 'date' }, { f: 'areaId', l: 'Area', t: 'select', o: opt('areas') }, { f: 'agentId', l: 'Agent', t: 'select', o: opt('agents') }, { f: 'equipId', l: 'Instrument', t: 'select', o: opt('equipment', 'asset') }, { f: 'value', l: 'Reading', t: 'num' }, { f: 'unit', l: 'Unit', t: 'select', o: L.units }, { f: 'calOk', l: 'Bump / cal OK', t: 'check' }, { f: 'note', l: 'Location / note', w: 200 }],
@@ -475,7 +515,7 @@ const C = {
   plan: [{ f: '_p', l: 'Exposure profile', calc: p => esc(profLabel(p)) }, { f: 'method', l: 'Method', w: 160, h: 'e.g. NIOSH 1501, ISO 9612' }, { f: 'nReq', l: 'n required', t: 'num' }, { f: 'timing', l: 'Timing / season / tasks', w: 200 }, { f: 'oelId', l: 'Pinned OEL (optional)', t: 'select', o: p => S.oels.filter(o => o.agentId === p.agentId).map(o => [o.id, `${o.source} ${F(o.value)} ${o.unit} ${o.avg || ''}`]) }, { f: 'oelReason', l: 'Reason for pinned OEL' }, { f: 'surveillance', l: 'Health surveillance link', w: 170 }],
   equipment: [{ f: 'asset', l: 'Asset ID' }, { f: 'type', l: 'Type', w: 150 }, { f: 'exZone', l: 'Ex rating (lowest zone)', t: 'select', o: L.exZone }, { f: 'exCert', l: 'Ex certificate / gas group / T-class', w: 200 }, { f: 'calDue', l: 'Calibration due', t: 'date' }],
   labs: [{ f: 'name', l: 'Laboratory', w: 180 }, { f: 'accred', l: 'Accreditation no.' }, { f: 'scope', l: 'Scope (methods)', w: 200 }, { f: 'expiry', l: 'Certificate expiry', t: 'date' }],
-  samples: [{ f: 'coc', l: 'Sample / COC ID' }, { f: 'date', l: 'Date', t: 'date' }, { f: 'worker', l: 'Worker (pseudonym)' }, { f: 'areaId', l: 'Area', t: 'select', o: opt('areas') }, { f: 'task', l: 'Tasks during sample', w: 160 }, { f: 'durMin', l: 'Duration (min)', t: 'num' }, { f: 'flowPre', l: 'Flow pre (L/min)', t: 'num' }, { f: 'flowPost', l: 'Flow post (L/min)', t: 'num' }, { f: 'value', l: 'Result', t: 'num', h: 'For a non-detect, enter the LOD in this column and tick ND' }, { f: 'nd', l: 'ND (<LOD)', t: 'check' }, { f: 'equipId', l: 'Equipment', t: 'select', o: opt('equipment', 'asset') }, { f: 'labId', l: 'Lab', t: 'select', o: opt('labs') }, { f: 'logger', l: 'Datalog verified', t: 'check', h: 'Required for acute toxic gas monitors used as exposure data' }, { f: 'rpe', l: 'RPE worn' }, { f: 'cond', l: 'Process condition', t: 'select', o: L.cond }, { f: 'blank', l: 'Field blank', t: 'check' }, { f: 'excluded', l: 'Exclude', t: 'check' }, { f: 'exclReason', l: 'Exclusion reason', w: 160 }],
+  samples: [{ f: 'coc', l: 'Sample / COC ID' }, { f: 'stype', l: 'Type', t: 'select', o: ['Personal', 'Area'], h: 'Fixed-area samples show background levels only and are excluded from compliance statistics' }, { f: 'date', l: 'Date', t: 'date' }, { f: 'worker', l: 'Worker (pseudonym)' }, { f: 'areaId', l: 'Area', t: 'select', o: opt('areas') }, { f: 'task', l: 'Tasks during sample', w: 160 }, { f: 'durMin', l: 'Duration (min)', t: 'num' }, { f: 'flowPre', l: 'Flow pre (L/min)', t: 'num' }, { f: 'flowPost', l: 'Flow post (L/min)', t: 'num' }, { f: 'value', l: 'Result', t: 'num', h: 'For a non-detect, enter the LOD in this column and tick ND' }, { f: 'nd', l: 'ND (<LOD)', t: 'check' }, { f: 'equipId', l: 'Equipment', t: 'select', o: opt('equipment', 'asset') }, { f: 'labId', l: 'Lab', t: 'select', o: opt('labs') }, { f: 'logger', l: 'Datalog verified', t: 'check', h: 'Required for acute toxic gas monitors used as exposure data' }, { f: 'rpe', l: 'RPE worn' }, { f: 'cond', l: 'Process condition', t: 'select', o: L.cond }, { f: 'blank', l: 'Field blank', t: 'check' }, { f: 'excluded', l: 'Exclude', t: 'check' }, { f: 'exclReason', l: 'Exclusion reason', w: 160 }],
   controls: [{ f: 'desc', l: 'Control', w: 240 }, { f: 'level', l: 'Hierarchy level', t: 'select', o: L.level }, { f: 'areaId', l: 'Area', t: 'select', o: opt('areas') }, { f: 'agentId', l: 'Agent', t: 'select', o: opt('agents') }, { f: 'evidence', l: 'Effectiveness evidence', w: 200 }, { f: 'testDate', l: 'Test date', t: 'date' }, { f: 'verified', l: 'Verification', t: 'select', o: L.verified }],
   recs: [{ f: 'statement', l: 'Recommendation (specific, verifiable)', t: 'area', w: 280 }, { f: 'level', l: 'Hierarchy', t: 'select', o: L.level }, { f: 'profileId', l: 'Linked profile', t: 'select', o: profOpt }, { f: 'priority', l: 'Priority', t: 'select', o: L.prio }, { f: 'rationale', l: 'Rationale (data / observation)', t: 'area', w: 220 }, { f: 'owner', l: 'Owner' }, { f: 'due', l: 'Due', t: 'date' }, { f: 'verify', l: 'Verification method' }, { f: 'status', l: 'Status', t: 'select', o: L.recStatus }],
   rpe: [{ f: '_p', l: 'Exposure profile', calc: p => esc(profLabel(p)) }, { f: '_x', l: 'X95 UCL', calc: p => { const a = analyseProfile(p); return a.stats && a.stats.x95ucl ? F(a.stats.x95ucl) + ' ' + esc(a.unit) : '\u2013'; } }, { f: '_o', l: 'OEL (adj.)', calc: p => { const a = analyseProfile(p); return a.oelAdj ? F(a.oelAdj) + ' ' + esc(a.unit) : '\u2013'; } }, { f: '_r', l: 'Required PF', calc: p => { const a = analyseProfile(p); return a.stats && a.stats.x95ucl && a.oelAdj ? F(a.stats.x95ucl / a.oelAdj, 2) : '\u2013'; } }, { f: 'rpeType', l: 'RPE in use', w: 160 }, { f: 'rpeApf', l: 'Assigned PF', t: 'num' }, { f: '_v', l: 'Adequacy', calc: p => rpeVerdict(p) }, { f: 'reassessMonths', l: 'Reassess (months)', t: 'num', h: 'Leave blank to use the default from the final category' }],
@@ -560,7 +600,7 @@ function selectOEL(p) {
 const anaCache = new Map();
 function analyseProfile(p) {
   const sel = selectOEL(p), seg = byId('segs', p.segId);
-  const smp = S.samples.filter(s => s.profileId === p.id && !s.blank && !s.excluded && s.value > 0);
+  const smp = S.samples.filter(s => s.profileId === p.id && !s.blank && !s.excluded && s.stype !== 'Area' && s.value > 0);
   const key = JSON.stringify([smp.map(s => [s.value, !!s.nd]), sel.oel && sel.oel.value, seg && seg.shiftH, p.avg, S.decision]);
   if (anaCache.has(p.id) && anaCache.get(p.id).key === key) return anaCache.get(p.id).res;
   let rf = 1, rfNote = 'No adjustment';
@@ -611,7 +651,7 @@ function qaFlags() {
   const smpAll = S.samples;
   S.profiles.forEach(p => {
     const lab = profLabel(p);
-    if (p.erc === undefined || p.erc === '' || p.erc == null) add('Info', lab, 'Not yet rated in OHRA.', 'p|' + p.id + '|rate');
+    if (isADNOC()) { /* rated under HSE-OH-ST03 rules */ } else if (p.erc === undefined || p.erc === '' || p.erc == null) add('Info', lab, 'Not yet rated in OHRA.', 'p|' + p.id + '|rate');
     else if (!p.rationale) add('Flag', lab, 'Rating has no rationale.', 'p|' + p.id + '|rat');
     const a = analyseProfile(p);
     if (a.n > 0 && !a.sel.oel) add('Flag', lab, 'Results entered but no OEL found for this averaging time.', 'p|' + p.id + '|oel');
@@ -652,6 +692,7 @@ function qaFlags() {
   });
   const nb = smpAll.filter(s => s.blank).length, nr = smpAll.length - nb;
   if (nr >= 5 && (nb < 2 || nb < 0.1 * nr)) add('Flag', 'Field QA', `${nb} field blanks for ${nr} samples (target 10%, at least 2).`, 'qa|blanks');
+  adnocFlags(add);
   return F2;
 }
 
@@ -670,7 +711,8 @@ function progress(id) {
     case 'engagement': return S.decision.locked && S.engagement.client ? 2 : (S.engagement.client || S.engagement.site) ? 1 : 0;
     case 'ohid': return S.areas.length && S.agents.length && S.tasks.length ? 2 : (S.areas.length || S.agents.length) ? 1 : 0;
     case 'segs': return S.segs.length && S.segs.every(s => s.status === 'Approved' || s.status === 'Retired') ? 2 : S.segs.length ? 1 : 0;
-    case 'ohra': return S.profiles.length && S.profiles.every(p => p.erc !== undefined && p.erc !== '' && p.erc != null) ? 2 : S.profiles.length ? 1 : 0;
+    case 'ohra': if (isADNOC()) return S.profiles.length && S.profiles.every(p => p.severity && p.likeQual) ? 2 : S.profiles.length ? 1 : 0;
+      return S.profiles.length && S.profiles.every(p => p.erc !== undefined && p.erc !== '' && p.erc != null) ? 2 : S.profiles.length ? 1 : 0;
     case 'exposure': return S.profiles.length && S.profiles.every(p => p.decCat !== undefined && p.decCat !== '' && p.decCat != null) ? 2 : S.samples.length ? 1 : 0;
     case 'controls': return S.recs.length && S.handover.date ? 2 : (S.recs.length || S.controls.length) ? 1 : 0;
     case 'report': return S.signoff ? 2 : S.report.summary ? 1 : 0;
@@ -692,6 +734,7 @@ function renderRail() {
 let rTimer = null;
 function scheduleRender() { clearTimeout(rTimer); rTimer = setTimeout(render, 0); }
 function render() {
+  if (!S.adnoc) S.adnoc = adnocBlank();
   const main = $('#main'), ae = document.activeElement, k = ae && ae.dataset ? ae.dataset.key : null;
   const st = main.scrollTop, tw = {}; document.querySelectorAll('.tw').forEach(t => tw[t.dataset.tw] = t.scrollLeft);
   renderRail();
@@ -715,7 +758,7 @@ const VIEWS = {
       <li><b>Exposure</b>: enter results; the app runs AIHA and EN 689 statistics with ROS for non-detects.</li>
       <li><b>Controls</b>: evaluate controls, RPE adequacy, recommendations, MOC and handover.</li>
       <li><b>Report</b>: generate the report, clear QA checks, sign and issue.</li></ol>
-      <div class="btn-row"><button class="btn primary" data-act="tab" data-tab="engagement">Start a new engagement</button><button class="btn" data-act="demo">Load the sour gas demo</button><button class="btn" data-act="openFile">Open an engagement file</button></div></div>
+      <div class="btn-row"><button class="btn primary" data-act="tab" data-tab="engagement">Start a new engagement</button><button class="btn" data-act="demo">Load the sour gas demo</button><button class="btn" data-act="adnocDemo">Load the ADNOC OHRM demo</button><button class="btn" data-act="openFile">Open an engagement file</button></div></div>
       <p class="hint">OEL values are not supplied with the app. Enter limits from sources you are licensed to use, with their citations.</p></div>`;
     }
     const cats = [0, 1, 2, 3, 4].map(c => S.profiles.filter(p => String(p.decCat) === String(c)).length);
@@ -731,6 +774,7 @@ const VIEWS = {
       <div class="cols">
       <div class="sec"><h2>Final exposure categories</h2><p class="hint">Decided by the hygienist in the Exposure step.</p>
         <div class="heat">${cats.map((n, c) => `<div class="cat${c}"><b>${n}</b>Category ${c}</div>`).join('')}</div></div>
+      ${isADNOC() ? `<div class="sec"><h2>Health risk ratings (HSE-OH-ST03)</h2><p class="hint">Current rating: quantitative where measured, otherwise qualitative.</p><table class="kv">${[1, 2, 3, 4].map(n => { const lab = Object.values(OHStats.ADNOC_CAT).find(c => c.n === n).label; return `<tr><th>${esc(lab)}</th><td>${S.profiles.filter(p => { const h = adCurrentHRR(p); return h && h.n === n; }).length} entries</td></tr>`; }).join('')}</table></div>` : ''}
       <div class="sec"><h2>Suggested work lists</h2><p class="hint">From OHRA ratings; the order is a suggestion, not a decision.</p>
         <table class="kv"><tr><th><span class="pill crit">Act now</span></th><td>${lists['Act now']} profiles</td></tr><tr><th><span class="pill warn">Sample</span></th><td>${lists['Sample']} profiles</td></tr><tr><th><span class="pill ok">Confirm</span></th><td>${lists['Confirm']} profiles</td></tr></table></div>
       </div>
@@ -755,6 +799,7 @@ const VIEWS = {
       <div class="sec"><h2>Decision standard</h2>
         ${L2 ? `<div class="callout">Locked by ${esc(S.decision.lockedBy)} on ${esc(S.decision.lockedAt.slice(0, 10))}. Changes need a recorded reason.</div>` : '<p class="hint">Choose how OELs are selected and which statistical test decides acceptability, then lock it.</p>'}
         <div class="cols">
+        ${field('decision.framework', 'Assessment framework', 'select', { o: L.framework, disabled: L2, hint: 'ADNOC adds the HSE-OH-ST03 OHID/OHRA worksheets, 6 \u00D7 6 matrix, risk register and approvals' })}
         ${field('decision.oelRule', 'OEL selection rule', 'select', { o: L.oelRule, disabled: L2 })}
         ${S.decision.oelRule.startsWith('Specified') ? field('decision.sources', 'Source priority (comma-separated)', 'text', { disabled: L2, hint: 'e.g. OSHAD-SF, Company, ACGIH' }) : ''}
         ${field('decision.statTest', 'Statistical decision', 'select', { o: L.statTest, disabled: L2 })}
@@ -762,8 +807,9 @@ const VIEWS = {
         ${field('decision.confEN', 'EN 689 confidence level', 'num', { disabled: L2, hint: 'EN 689 uses 0.70' })}
         ${field('decision.shiftModel', 'Shift adjustment model', 'select', { o: L.shiftModel, disabled: L2 })}
         ${field('decision.minN', 'Minimum samples per profile', 'num', { disabled: L2 })}
+        ${isADNOC() ? field('decision.uclBasis', 'Quantitative likelihood basis', 'select', { o: L.uclBasis, disabled: L2, hint: 'HSE-OH-ST03 defines the 95% UCL as the UCL of the arithmetic mean (IHSTAT)' }) : ''}
         </div>
-        <div class="btn-row" style="margin-top:12px">${L2 ? '<button class="btn" data-act="unlockStd">Unlock with reason</button>' : '<button class="btn primary" data-act="lockStd">Lock decision standard</button>'}</div></div>
+        <div class="btn-row" style="margin-top:12px">${L2 ? '<button class="btn" data-act="unlockStd">Unlock with reason</button>' : '<button class="btn primary" data-act="lockStd">Lock decision standard</button><button class="btn" data-act="adnocPreset">Apply ADNOC HSE-OH-ST03 preset</button>'}</div></div>
       <div class="sec"><h2>Data request register</h2><p class="hint">Track what the client has supplied before mobilising.</p>
         ${tableEditor('datareq', C.datareq, { defaults: { status: 'Requested' }, addLabel: 'Add item' })}
         <div class="btn-row" style="margin-top:8px"><button class="btn" data-act="loadReq">Add sour gas plant request list</button></div></div>
@@ -773,8 +819,8 @@ const VIEWS = {
         ${tableEditor('tasks', C.tasks, { filter: t => t.fromKickoff, key: 'ko', defaults: { routine: 'Non-routine', fromKickoff: true, freq: 'Turnaround / annual' }, addLabel: 'Add non-routine task' })}</div>`;
   },
   ohid() {
-    return head('OHID: initial diagnostic', 'Build the area, source, agent and task map. Stream data and the chemical inventory predict most of the chemical exposure picture before the walk-through.') +
-      `<div class="sec"><h2>Areas and units</h2>${tableEditor('areas', C.areas, { addLabel: 'Add area' })}</div>
+    return head('OHID: initial diagnostic', 'Build the area, source, agent and task map. Stream data and the chemical inventory predict most of the chemical exposure picture before the walk-through.') + (isADNOC() ? adnocOhidSections() : '') +
+      `<div class="sec"><h2>${isADNOC() ? 'Assessment units (areas)' : 'Areas and units'}</h2>${tableEditor('areas', C.areas, { addLabel: 'Add area' })}</div>
       <div class="sec"><h2>Agents</h2><p class="hint">The hazard sub-category sets default averaging times: peak/STEL for acute toxic gases, full-shift TWA for chronic chemicals and particulates.</p>
         ${tableEditor('agents', C.agents, { addLabel: 'Add agent', defaults: { cls: 'Chemical' } })}
         <div class="btn-row" style="margin-top:8px"><button class="btn" data-act="loadHaz">Add sour gas hazard library</button></div></div>
@@ -790,6 +836,7 @@ const VIEWS = {
       <div class="sec"><h2>Validation against measured data</h2><p class="hint">Updated as results arrive in the Exposure step.</p>${segValidation()}</div>`;
   },
   ohra() {
+    if (isADNOC()) return adnocOhraView();
     return head('OHRA: qualitative risk assessment', 'Rate each SEG \u00D7 agent profile. Low confidence on a serious health effect raises sampling priority. The suggested list is a sort order; the hygienist decides.') +
       `<div class="sec"><h2>Exposure profiles and ratings</h2><p class="hint">Exposure rating (AIHA): 0 \u2264 1% of OEL, 1 \u2264 10%, 2 \u2264 50%, 3 \u2264 100%, 4 > 100%.</p>
         ${tableEditor('profiles', C.rating, { addLabel: 'Add profile', key: 'rate', defaults: { scenario: 'Routine', conf: 'Medium', basis: 'Professional judgement' } })}
@@ -814,14 +861,16 @@ const VIEWS = {
         <tr><th>Applied OEL</th><td>${a.oelAdj ? `<b>${F(a.oelAdj)} ${unit}</b>${conv} <span class="hint">${esc(a.rfNote)}</span>` : '\u2013'}</td></tr>
         ${mocReview(p).length ? `<tr><th>MOC</th><td><span class="pill crit">Review required</span> ${mocReview(p).map(m => esc(m.ref || m.desc)).join(', ')}</td></tr>` : ''}</table></div>
       <div class="sec"><h2>Samples</h2><div class="btn-row" style="margin-bottom:8px"><button class="btn" data-act="importCSV">Import lab results (CSV)</button><span class="hint" style="margin:0">CSV columns: coc, value, nd (matched to existing sample IDs)</span></div>
-        ${tableEditor('samples', C.samples, { filter: s => s.profileId === p.id, key: p.id, defaults: { profileId: p.id, date: today(), cond: 'Normal' }, addLabel: 'Add sample' })}</div>
+        ${tableEditor('samples', C.samples, { filter: s => s.profileId === p.id, key: p.id, defaults: { profileId: p.id, date: today(), cond: 'Normal', stype: 'Personal' }, addLabel: 'Add sample' })}</div>
       <div class="sec"><h2>Statistics</h2>${st.n < 2 ? '<p class="hint">Enter at least 2 valid results to see statistics; 6 or more for a statistical decision.</p>' : `
         <div class="stats-grid"><div><table class="kv">
           <tr><th>n (non-detects)</th><td>${st.n} (${st.nd})</td></tr>
           <tr><th>Non-detect method</th><td>${esc(st.censorMethod || '\u2013')}</td></tr>
           <tr><th>Geometric mean</th><td>${F(st.gm)} ${unit}</td></tr>
           <tr><th>GSD</th><td>${F(st.gsd)}</td></tr>
-          <tr><th>Arithmetic mean</th><td>${F(st.am)} ${unit}${st.amUclCox ? ` (UCL95 Cox ${F(st.amUclCox)})` : ''}</td></tr>
+          <tr><th>Arithmetic mean</th><td>${F(st.am)} ${unit}</td></tr>
+          <tr><th>AM UCL95</th><td>${F(st.amUcl)} ${unit} <span class="hint">GCI${st.amUclCox ? `; Cox ${F(st.amUclCox)}` : ''}</span></td></tr>
+          ${isADNOC() && a.oelAdj ? (() => { const q = adQuant(p); return `<tr><th>ADNOC (${esc(q.u.basis)})</th><td>${q.u.ratio !== null ? F(100 * q.u.ratio, 3) + '% OEL, likelihood ' + (q.like || '\u2013') + ' ' : ''}${hrrPill(q.hrr)} <span class="hint">${esc(q.freq || '')}</span></td></tr>`; })() : ''}
           <tr><th>X95</th><td><b>${F(st.x95)} ${unit}</b>${a.oelAdj ? ` (${F(100 * st.x95 / a.oelAdj, 3)}% of OEL)` : ''}</td></tr>
           <tr><th>X95 UCL${Math.round(S.decision.confAIHA * 100)}</th><td>${F(st.x95ucl)} ${unit}</td></tr>
           ${a.oelAdj ? `<tr><th>Exceedance fraction</th><td>${F(100 * st.ef, 3)}%${st.efUcl !== undefined ? ` (UCL ${F(100 * st.efUcl, 3)}%)` : ''}</td></tr>
@@ -981,7 +1030,7 @@ function reportHTML() {
   <h1>${esc(r.title)}</h1><p class="meta">${esc(e.site)} \u2014 ${esc(e.client)} \u2014 ${esc(e.type)}<br>Report ${esc(r.ref || '(no reference)')}, revision ${esc(r.revision)}${so ? `, signed ${esc(so.at.slice(0, 10))}` : ', DRAFT (not signed)'}<br>Lead consultant: ${esc(e.consultant)}; principal hygienist: ${esc(e.principal)}</p>
   <h2>1. Executive summary</h2>${r.summaryIsAI ? '<p class="meta"><em>Drafted with AI assistance and reviewed by the hygienist.</em></p>' : ''}<p>${esc(r.summary || 'Executive summary not yet written.').replace(/\n/g, '<br>')}</p>
   <h2>2. Introduction and scope</h2><p>Engagement type: ${esc(e.type)}${e.trigger ? ` (trigger: ${esc(e.trigger)})` : ''}. Fieldwork ${esc(e.start || '?')} to ${esc(e.end || '?')}. Facilities: ${esc((e.facilities || []).join(', '))}. Workforce: ${esc((e.workforce || []).join(', '))}. Seasons: ${esc((e.seasons || []).join(', '))}.</p>
-  <h2>3. Methodology</h2><p>Exposure assessment followed the AIHA exposure assessment strategy and BS EN 689:2018+AC:2019. OEL selection: ${esc(d.oelRule)}${d.sources ? ` (${esc(d.sources)})` : ''}. Statistical decision: ${esc(d.statTest)}; AIHA confidence ${d.confAIHA}, EN 689 confidence ${d.confEN}. Shift adjustment: ${esc(d.shiftModel)}. Non-detects were handled by robust regression on order statistics where possible. Statistics engine v${OHStats.VERSION}. Decision standard ${d.locked ? `locked by ${esc(d.lockedBy)} on ${esc(d.lockedAt.slice(0, 10))}` : 'not locked'}.</p>
+  <h2>3. Methodology</h2><p>Assessment framework: ${esc(d.framework)}. Exposure assessment followed the AIHA exposure assessment strategy and BS EN 689:2018+AC:2019. OEL selection: ${esc(d.oelRule)}${d.sources ? ` (${esc(d.sources)})` : ''}. Statistical decision: ${esc(d.statTest)}; AIHA confidence ${d.confAIHA}, EN 689 confidence ${d.confEN}. Shift adjustment: ${esc(d.shiftModel)}. Non-detects were handled by robust regression on order statistics where possible. The 95% UCL of the arithmetic mean was calculated by the generalized confidence interval method. Statistics engine v${OHStats.VERSION}. Decision standard ${d.locked ? `locked by ${esc(d.lockedBy)} on ${esc(d.lockedAt.slice(0, 10))}` : 'not locked'}.</p>
   ${T(['Agent', 'Source', 'Jurisdiction', 'Value', 'Averaging', 'Status', 'Citation'], oelRows)}
   ${T(['Laboratory', 'Accreditation', 'Scope', 'Expiry'], S.labs.map(l => [esc(l.name), esc(l.accred), esc(l.scope), esc(l.expiry)]))}
   <h2>4. Limitations</h2>${lim.length ? '<ul>' + lim.map(x => `<li>${x}</li>`).join('') + '</ul>' : '<p>None recorded.</p>'}
@@ -990,6 +1039,7 @@ function reportHTML() {
   ${T(['Task', 'Area', 'Routine', 'Frequency', 'Duration (min)', 'PPE / RPE'], S.tasks.map(t => [esc(t.name), esc(nm('areas', t.areaId)), esc(t.routine), esc(t.freq), esc(t.dur ?? ''), esc(t.ppe)]))}
   <h2>6. Similar exposure groups</h2>${T(['ID', 'Name', 'Definition', 'Headcount (own / contractor)', 'Shift', 'Rationale', 'Status'], S.segs.map(s => [esc(s.code), esc(s.name), esc(s.definition), `${esc(s.headOwn ?? 0)} / ${esc(s.headCon ?? 0)}`, `${esc(s.shiftH ?? '')} h ${esc(s.rotation || '')}`, esc(s.rationale), esc(s.status)]))}
   <h2>7. Results by SEG and agent</h2>${res || '<p>No exposure profiles.</p>'}
+  ${adnocReportSection(T)}
   <h2>8. Control assessment</h2>${T(['Control', 'Level', 'Area', 'Evidence', 'Verification'], S.controls.map(c => [esc(c.desc), esc(c.level), esc(nm('areas', c.areaId)), esc(c.evidence), esc(c.verified)]))}
   ${T(['Profile', 'RPE in use', 'Assigned PF', 'Adequacy'], S.profiles.filter(p => p.rpeType || p.rpeApf).map(p => [esc(profLabel(p)), esc(p.rpeType), esc(p.rpeApf ?? ''), rpeVerdict(p).replace(/<[^>]+>/g, '')]))}
   <h2>9. Recommendations</h2>${T(['#', 'Recommendation', 'Hierarchy', 'Priority', 'Profile', 'Owner', 'Due', 'Verification'], S.recs.slice().sort((a, b) => (a.priority || '9').localeCompare(b.priority || '9')).map((x, i) => [i + 1, esc(x.statement), esc(x.level), esc(x.priority), esc(profLabel(byId('profiles', x.profileId))), esc(x.owner), esc(x.due), esc(x.verify)]))}
@@ -1108,6 +1158,244 @@ async function aiDraft() {
   } catch (err) { toast('AI request failed: ' + err.message); }
 }
 
+// ---------------- ADNOC HSE-OH-ST03 (OHRM) framework: OHID and OHRA ----------------
+const FW_GENERIC = 'Generic (AIHA / EN 689)', FW_ADNOC = 'ADNOC HSE-OH-ST03 (OHRM)';
+const isADNOC = () => S.decision.framework === FW_ADNOC;
+const AD = {
+  sev: { 6: 'Disastrous', 5: 'Catastrophic', 4: 'Major', 3: 'Serious', 2: 'Minor', 1: 'Notable' },
+  sevHint: { 6: 'Acute lethal (H\u2082S, CO, HCN); IARC Group 1; reproductive/mutagenic; irreversible system toxicity', 5: 'Irreversible organ damage; IARC 2A; permanent NIHL; heat stroke; COPD', 4: 'Severe reversible; systemic effects; dermatitis; MSDs; HAVS; IARC 2B', 3: 'Reversible without affecting work (defatting agents, irritants); IARC 3', 2: 'Little concern; nuisance dust; heat rash/cramps; IARC 4', 1: 'No observable signs or symptoms' },
+  like: { A: 'Rare', B: 'Unlikely', C: 'Possible', D: 'Likely', E: 'Very likely', F: 'Almost certain' },
+  likeHint: { A: '\u22645 h/week; enclosure with negative pressure and backup; automation', B: '>5\u201310 h/week; enclosure without negative pressure; LEV at source', C: '>10\u201320 h/week; administrative controls (rotation, access limits)', D: '>20\u201330 h/week; general dilution ventilation; reliance on PPE', E: '>30\u201340 h/week; natural ventilation only; inadequate controls', F: '>40 h/week; no controls; high-pressure emergency release' },
+  colors: { R: '#D33A2C', O: '#EE9A2E', Y: '#F2D533', G: '#4C9A57' },
+  phases: ['Conceptual / FEED', 'EPC / Commissioning', 'Operations', 'Decommissioning'],
+  approach: ['Specific', 'Generic'],
+  routes: ['Inhalation', 'Dermal', 'Ingestion', 'Inhalation + dermal', 'Physical (noise, heat, vibration, radiation)', 'Ergonomic', 'Psychosocial'],
+  iarc: ['1', '2A', '2B', '3', '4', 'Not classified'],
+  roles: ['Team Leader', 'Line Manager', 'Supervisor', 'OH SME (Industrial Hygienist)', 'OH SME (Occupational Physician)', 'Operations representative', 'Engineer', 'Other specialist', 'IH technician'],
+  certs: ['CIH (ABIH)', 'ROH (BOHS)', 'COH (BOHS)', 'Other equivalent', 'None'],
+  alarp: ['ALARP: routine monitoring', 'Non-ALARP: RAP required'],
+  activities: ['Routine operational activities and tasks, including office environments', 'Planned maintenance activities', 'Emergency response to accidental release of chemicals, hazardous material or energy', 'Cleaning activities', 'Non-routine activities such as shutdowns or unplanned maintenance', 'Waste handling and disposal tasks', 'Laboratory, quality assurance and quality control activities', 'Other planned and unplanned activities'],
+  info: [['Processes', 'Continuous / batch / intermittent'], ['Processes', 'Abnormal / unplanned events'], ['Processes', 'Production variables'], ['Processes', 'Emergency, shutdown and turnaround activities'], ['Plant and materials', 'Heavy machinery / fixed installations'], ['Plant and materials', 'Power tools, cranes, forklift trucks'], ['Plant and materials', 'Raw materials'], ['Plant and materials', 'Production aids, catalysts, additives'], ['Plant and materials', 'Waste streams and waste handling'], ['Properties', 'Noise, heat, vibration, radiation sources'], ['Properties', 'Mists, gases or aerosols produced'], ['Properties', 'Materials classified as hazardous or harmful'], ['Properties', 'Skin contact possible'], ['Properties', 'Exposure limits (airborne, dermal)'], ['Demographics', 'Employees per production area / process per shift'], ['Demographics', 'Gender, age, socioeconomic factors'], ['Nature of work', 'Shift patterns, durations, number'], ['Nature of work', 'Frequency of tasks'], ['Nature of work', 'Abnormal activities, cleaning, maintenance'], ['Control measures', 'Types (engineering, administrative, PPE)'], ['Control measures', 'Maintenance and inspection records'], ['Control measures', 'Operating manuals'], ['Control measures', 'Training and instruction'], ['Records', 'Previous OHRA reports'], ['Records', 'Quantitative surveys'], ['Records', 'Accident records'], ['Records', 'Medical reports'], ['Records', 'Health surveillance reports'], ['Records', 'Audit reports']],
+  compliance: ['1. Description of facility, project, location', '2. Description of tasks, activities and operations', '3. Scope of study (preliminary / full / review / generic)', '4. Identification and selection of assessment units and SEGs', '5. Appointment of assessment team (roles, team, site contact points)', '6. Qualitative OHRA workshop', '7. Identification of SEGs', '8. Preparation of Health Hazard Risk Register', '9. Assessment of adequacy of existing control measures', '10. Qualitative OHRA to determine initial health risk rating', '11. Remedial Action Plan for hazards not controlled to ALARP', '12. Quantitative surveys for SEGs exposed to Medium risk hazards', '13. RAP upgraded to detailed action plan (deliverables, owners, dates)', '14. Health surveillance programme for SEGs exposed to Medium risk hazards', '15. Periodic exposure assessment plan', '16. OHRA review date', '17. Reports of quantitative assessment'],
+  approvers: [['eoh', 'Endorsed: EOH Manager'], ['hse', 'Approved (Level 1): HSE Manager'], ['fac', 'Approved (Level 2): Facility Manager / Site Owner']],
+  oelSources: 'HSE-OH-ST02, Cabinet Decree, EH40, OSHA, NIOSH, ACGIH'
+};
+function adnocBlank() {
+  return { phase: 'Operations', approach: 'Specific', scope: 'Full (walkthrough and quantitative)', workshopDate: '', workshopAttendees: '', reviewDate: '',
+    act: AD.activities.map(() => ({ on: false, note: '' })), info: AD.info.map(() => ({ st: '', note: '' })),
+    compliance: AD.compliance.map(() => ({ done: false, ref: '' })),
+    apQual: { eoh: { name: '', date: '' }, hse: { name: '', date: '' }, fac: { name: '', date: '' } },
+    apRap: { eoh: { name: '', date: '' }, hse: { name: '', date: '' }, fac: { name: '', date: '' } } };
+}
+function applyADNOCPreset() {
+  Object.assign(S.decision, { framework: FW_ADNOC, oelRule: 'Specified source priority', sources: AD.oelSources, statTest: 'ADNOC 95% UCL banding (HSE-OH-ST03)', uclBasis: 'AM UCL95', confAIHA: 0.95, shiftModel: 'Brief & Scala' });
+  if (!S.adnoc) S.adnoc = adnocBlank();
+}
+
+// ---- derived ADNOC values per profile ----
+function adSevSuggest(p) {
+  const a = byId('agents', p.agentId); if (!a) return null;
+  if (a.subcat === 'Acute toxic gas' || a.iarc === '1') return 6;
+  return { '2A': 5, '2B': 4, '3': 3, '4': 2 }[a.iarc] || null;
+}
+function adQual(p) { return OHStats.adnocHRR(p.severity, p.likeQual); }
+function adUcl(p) {
+  const a = analyseProfile(p), st = a.stats;
+  const v = S.decision.uclBasis === 'X95 UCL95' ? st.x95ucl : st.amUcl;
+  return { v, oel: a.oelAdj, unit: a.unit, ratio: v && a.oelAdj ? v / a.oelAdj : null, n: a.n, basis: S.decision.uclBasis === 'X95 UCL95' ? 'X95 UCL95' : 'AM UCL95' };
+}
+function adQuant(p) {
+  const u = adUcl(p); if (u.ratio === null || u.n < 2) return { u, like: null, hrr: null, freq: null };
+  const like = OHStats.adnocQuantLikelihood(u.ratio);
+  return { u, like, hrr: OHStats.adnocHRR(p.severity, like), freq: OHStats.adnocFrequency(u.ratio) };
+}
+function adCurrentHRR(p) { const q = adQuant(p); return q.hrr || adQual(p); }
+function adQuantRequired(p) { const h = adQual(p); return Number(p.severity) >= 3 || (h && h.n <= 3); }
+function adAlarpSuggest(p) { const h = adCurrentHRR(p); if (!h) return ''; return h.n <= 2 ? AD.alarp[1] : AD.alarp[0]; }
+function adHSP(p) { const q = adQuant(p); return q.u.ratio !== null && q.u.ratio > 0.5; }
+function adBio(p) { const a = byId('agents', p.agentId), h = adCurrentHRR(p); return !!(a && a.bei && h && h.n <= 3); }
+function hrrPill(h) { if (!h) return '<span class="pill none">\u2013</span>'; const c = { R: 'crit', O: 'warn', Y: 'med', G: 'ok' }[h.key]; return `<span class="pill ${c}" title="${esc(h.label)}">${esc(h.code)} ${esc(h.label.split(' / ')[0])}</span>`; }
+const sevOpts = [6, 5, 4, 3, 2, 1].map(n => [String(n), `${n} ${AD.sev[n]}`]);
+const likeOpts = 'ABCDEF'.split('').map(l => [l, `${l} ${AD.like[l]}`]);
+
+// ---- schemas ----
+C.adQual = [
+  { f: 'segId', l: 'SEG', t: 'select', o: segOpt, w: 190 }, { f: 'agentId', l: 'Hazard / agent', t: 'select', o: opt('agents'), w: 190 },
+  { f: 'avg', l: 'Averaging', t: 'select', o: L.avg, w: 140 }, { f: 'routes', l: 'Routes of exposure', t: 'select', o: AD.routes, w: 170 },
+  { f: 'exposedN', l: '# exposed', t: 'num' }, { f: 'effects', l: 'Potential health effects (acute / chronic, target organs)', t: 'area', w: 220 },
+  { f: 'existingCtl', l: 'Existing controls', t: 'area', w: 200 },
+  { f: 'severity', l: 'Severity 1\u20136', t: 'select', o: sevOpts, h: 'Severity reflects the health effect alone and does not take account of controls (App. 1 Step 5)' },
+  { f: '_ss', l: 'Suggested', calc: p => { const s = adSevSuggest(p); return s ? `<span title="${esc(AD.sevHint[s])}">${s}</span>` : '\u2013'; } },
+  { f: 'hoursWeek', l: 'Exposure h/week', t: 'num' },
+  { f: 'likeQual', l: 'Likelihood A\u2013F', t: 'select', o: likeOpts, h: 'Qualitative likelihood takes account of existing controls (App. 3 Table 1)' },
+  { f: '_ls', l: 'By hours', calc: p => { const l = OHStats.adnocLikeFromHours(p.hoursWeek); return l ? `<span title="${esc(AD.likeHint[l])}">${l}</span>` : '\u2013'; } },
+  { f: '_h', l: 'Qualitative HRR', calc: p => hrrPill(adQual(p)) },
+  { f: '_q', l: 'Quantitative needed', calc: p => adQual(p) ? (adQuantRequired(p) ? '<span class="pill warn">Yes</span>' : '<span class="pill ok">No</span>') : '\u2013' },
+  { f: 'noQuantReason', l: 'If not measured: justification', w: 200, h: 'Required when quantitative assessment is needed but not done (App. 1 Step 5.3)' },
+  { f: 'rationale', l: 'Rating rationale', t: 'area', w: 200 }
+];
+C.adQuantT = [
+  { f: '_p', l: 'SEG \u00D7 hazard', calc: p => esc(profLabel(p)) },
+  { f: '_n', l: 'n', calc: p => String(adUcl(p).n) },
+  { f: '_u', l: '95% UCL', calc: p => { const u = adUcl(p); return u.v ? `${F(u.v)} ${esc(u.unit)} <span class="hint">${u.basis}</span>` : '\u2013'; } },
+  { f: '_o', l: 'OEL (applied)', calc: p => { const u = adUcl(p); return u.oel ? `${F(u.oel)} ${esc(u.unit)}` : '\u2013'; } },
+  { f: '_r', l: '% OEL', calc: p => { const u = adUcl(p); return u.ratio !== null ? F(100 * u.ratio, 3) + '%' : '\u2013'; } },
+  { f: '_l', l: 'Quant. likelihood', calc: p => { const q = adQuant(p); return q.like ? `${q.like} ${AD.like[q.like]}` : '\u2013'; } },
+  { f: '_hh', l: 'Quantitative HRR', calc: p => hrrPill(adQuant(p).hrr) },
+  { f: 'alarp', l: 'ALARP decision', t: 'select', o: AD.alarp },
+  { f: '_as', l: 'Suggested', calc: p => esc((adAlarpSuggest(p) || '\u2013').split(':')[0]) },
+  { f: '_f', l: 'Survey frequency', calc: p => esc(adQuant(p).freq || '\u2013') },
+  { f: '_hsp', l: 'HSP (UCL > 50% OEL)', calc: p => adHSP(p) ? '<span class="pill warn">Include SEG</span>' : '\u2013' },
+  { f: '_bio', l: 'Biological monitoring', calc: p => adBio(p) ? '<span class="pill warn">Required</span>' : '\u2013' },
+  { f: 'reviewDate', l: 'Review date', t: 'date' }
+];
+C.team = [
+  { f: 'name', l: 'Name', w: 160 }, { f: 'role', l: 'Role', t: 'select', o: AD.roles }, { f: 'org', l: 'Organisation' },
+  { f: 'degree', l: 'OH/IH degree', t: 'check' }, { f: 'cert', l: 'Certification', t: 'select', o: AD.certs }, { f: 'years', l: 'O&G / energy IH years', t: 'num' },
+  { f: '_c', l: 'Competency (App. 4)', calc: r => teamCompetency(r) }
+];
+function teamCompetency(r) {
+  const cert = r.cert && r.cert !== 'None', y = Number(r.years) || 0;
+  if (r.role === 'Team Leader') return (r.degree || cert) && y >= 10 ? '<span class="pill ok">Meets</span>' : '<span class="pill crit">Not met</span>';
+  if (r.role === 'IH technician' || r.role === 'OH SME (Industrial Hygienist)') return y >= 5 ? '<span class="pill ok">Meets exception (\u22655 y, under Team Leader)</span>' : '<span class="pill warn">Under 5 years</span>';
+  return '<span class="hint">n/a</span>';
+}
+
+// ---- views ----
+function adnocOhidSections() {
+  const A = S.adnoc;
+  const chk = (path, on, label) => `<label style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" data-obj="${path}" data-t="check" data-key="obj|${path}"${on ? ' checked' : ''}><span>${esc(label)}</span></label>`;
+  const txt = (path, v, ph) => `<input type="text" class="inline" data-obj="${path}" data-t="text" data-key="obj|${path}" value="${esc(v || '')}" placeholder="${esc(ph || '')}" aria-label="${esc(ph || 'note')}">`;
+  return `<div class="sec"><h2>OHRA set-up (HSE-OH-ST03)</h2><p class="hint">Project phase, approach and the qualitative OHRA workshop. Clause 7(a) requires OHRA at every project phase.</p><div class="cols">
+      ${field('adnoc.phase', 'Project phase', 'select', { o: AD.phases })}${field('adnoc.approach', 'Assessment approach', 'select', { o: AD.approach, hint: 'Generic for similar activities and conditions; Specific for different locations or settings' })}
+      ${field('adnoc.scope', 'Scope of study', 'select', { o: ['Preliminary (walkthrough)', 'Full (walkthrough and quantitative)', 'Review of existing OHRA', 'Generic'] })}
+      ${field('adnoc.workshopDate', 'Qualitative OHRA workshop date', 'date')}${field('adnoc.workshopAttendees', 'Workshop attendees', 'area')}</div></div>
+    <div class="sec"><h2>Assessment team</h2><p class="hint">Appendix 4: the Team Leader needs an OH/IH degree or CIH/ROH/COH (or equivalent) and at least 10 years in oil and gas or energy. IH technicians with 5 or more years may assist under the Team Leader.</p>${tableEditor('team', C.team, { addLabel: 'Add team member', defaults: { role: 'OH SME (Industrial Hygienist)' } })}</div>
+    <div class="sec"><h2>Activity coverage</h2><p class="hint">Clause 7(e): the OHRA covers at least these activities. Record a note where one does not apply.</p>
+      <div class="tw"><table class="grid"><thead><tr><th>Activity (clause 7(e))</th><th>Covered</th><th>Note</th></tr></thead><tbody>${AD.activities.map((a, i) => `<tr><td><span class="calc" style="white-space:normal">${i + 1}. ${esc(a)}</span></td><td>${chk(`adnoc.act.${i}.on`, A.act[i].on, '')}</td><td>${txt(`adnoc.act.${i}.note`, A.act[i].note, 'Note or reason not applicable')}</td></tr>`).join('')}</tbody></table></div></div>
+    <div class="sec"><h2>Information gathering checklist</h2><p class="hint">Appendix 6. Mark each item applicable or not applicable.</p>
+      <div class="tw"><table class="grid"><thead><tr><th>Group</th><th>Information</th><th>Status</th><th>Note</th></tr></thead><tbody>${AD.info.map(([g, it], i) => `<tr><td><span class="calc">${esc(g)}</span></td><td><span class="calc" style="white-space:normal">${esc(it)}</span></td><td><select data-obj="adnoc.info.${i}.st" data-t="text" data-key="obj|adnoc.info.${i}.st" aria-label="Status"><option value=""></option>${['Applicable', 'Not applicable'].map(o => `<option${A.info[i].st === o ? ' selected' : ''}>${o}</option>`).join('')}</select></td><td>${txt(`adnoc.info.${i}.note`, A.info[i].note, 'Source / note')}</td></tr>`).join('')}</tbody></table></div></div>`;
+}
+function adMatrix(mode) {
+  const hd = 'ABCDEF'.split('');
+  let h = `<div class="tw"><table class="grid adm" style="width:auto"><thead><tr><th>Severity \u2193 / Likelihood \u2192</th>${hd.map(l => `<th title="${esc(AD.likeHint[l])}">${l} ${AD.like[l]}</th>`).join('')}</tr></thead><tbody>`;
+  for (let s = 6; s >= 1; s--) {
+    h += `<tr><th title="${esc(AD.sevHint[s])}">${s} ${AD.sev[s]}</th>`;
+    hd.forEach(l => {
+      const k = OHStats.ADNOC_MATRIX[s]['ABCDEF'.indexOf(l)];
+      const ps = S.profiles.filter(p => Number(p.severity) === s && (mode === 'quant' ? adQuant(p).like === l : p.likeQual === l));
+      h += `<td style="background:${AD.colors[k]};color:${k === 'R' ? '#fff' : '#16232B'};min-width:110px;font-size:12px"><b>${s}${l}</b>${ps.map(p => '<br>' + esc(profLabel(p))).join('')}</td>`;
+    });
+    h += '</tr>';
+  }
+  return h + '</tbody></table></div><p class="hint" style="margin-top:8px">Red: High / Category 1. Orange: High-Medium / Category 2. Yellow: Medium / Category 3. Green: Low / Category 4 (Appendix 9).</p>';
+}
+function adApprovals(key, title) {
+  const A = S.adnoc[key];
+  return `<h3>${esc(title)}</h3><div class="tw"><table class="grid"><thead><tr><th>Step</th><th>Name</th><th>Date</th></tr></thead><tbody>${AD.approvers.map(([k, l]) => `<tr><td><span class="calc">${esc(l)}</span></td><td><input type="text" data-obj="adnoc.${key}.${k}.name" data-t="text" data-key="obj|adnoc.${key}.${k}.name" value="${esc(A[k].name)}" aria-label="${esc(l)} name"></td><td><input type="date" data-obj="adnoc.${key}.${k}.date" data-t="date" data-key="obj|adnoc.${key}.${k}.date" value="${esc(A[k].date)}" aria-label="${esc(l)} date"></td></tr>`).join('')}</tbody></table></div>`;
+}
+function adRegisterRows() {
+  return S.profiles.map(p => {
+    const seg = byId('segs', p.segId) || {}, ag = byId('agents', p.agentId) || {}, q = adQuant(p), qh = adQual(p);
+    const areaNames = [...new Set(S.samples.filter(s => s.profileId === p.id && s.areaId).map(s => nm('areas', s.areaId)))].join(', ');
+    const acts = S.recs.filter(r => r.profileId === p.id).map(r => r.statement).join('; ');
+    return { segId: seg.code || '', loc: areaNames, seg: seg.name || '', job: seg.criteria || '', proc: seg.taskList || '', hazard: `${ag.name || ''} (${ag.cls || ''})`, routes: p.routes || '', n: p.exposedN ?? ((Number(seg.headOwn) || 0) + (Number(seg.headCon) || 0)),
+      sev: p.severity || '', effects: p.effects || ag.endpoints || '', lq: p.likeQual || '', ucl: q.u.v ? `${F(q.u.v)} ${q.u.unit}` : '', oel: q.u.oel ? `${F(q.u.oel)} ${q.u.unit}` : '', lqt: q.like || '', hrr: (q.hrr || qh) ? (q.hrr || qh).code + ' ' + (q.hrr || qh).label : '', actions: acts, freq: q.freq || '' };
+  });
+}
+const AD_REG_HEAD = ['SEG ID', 'Location / facility', 'SEG', 'Job title', 'Process / work activity', 'Hazard', 'Routes', '# exposed', 'Severity', 'Potential health effects', 'Likelihood (qual.)', '95% UCL', 'OEL', 'Likelihood (quant.)', 'Health risk rating', 'Actions / additional controls', 'Monitoring frequency'];
+function adRegisterTable(forReport) {
+  const rows = adRegisterRows();
+  const body = rows.map(r => [r.segId, r.loc, r.seg, r.job, r.proc, r.hazard, r.routes, r.n, r.sev, r.effects, r.lq, r.ucl, r.oel, r.lqt, r.hrr, r.actions, r.freq]);
+  if (forReport) return body;
+  return `<div class="tw"><table class="grid"><thead><tr>${AD_REG_HEAD.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${body.length ? body.map(r => `<tr>${r.map(c => `<td><span class="calc" style="white-space:normal;min-width:70px">${esc(c)}</span></td>`).join('')}</tr>`).join('') : `<tr><td class="empty" colspan="${AD_REG_HEAD.length}">No SEG \u00D7 hazard entries yet.</td></tr>`}</tbody></table></div>`;
+}
+function adnocOhraView() {
+  const nonAlarp = S.profiles.filter(p => (p.alarp || adAlarpSuggest(p)).startsWith('Non-ALARP'));
+  const rapMissing = nonAlarp.filter(p => !S.recs.some(r => r.profileId === p.id));
+  return head('OHRA: Occupational Health Risk Assessment', 'HSE-OH-ST03 two-stage OHRA. Stage 1 rates severity (health effect only) and likelihood (with existing controls). Stage 2 replaces likelihood with the 95% UCL band from measured data.') +
+    `<div class="sec"><h2>Stage 1: qualitative OHRA</h2><p class="hint">Suggested severity comes from IARC group or acute toxicity; suggested likelihood comes from exposure hours only. Both are prompts: rate against the full Appendix 3 descriptors (hover a suggestion to see them).</p>
+      ${tableEditor('profiles', C.adQual, { addLabel: 'Add SEG \u00D7 hazard', key: 'adq', defaults: { scenario: 'Routine' } })}
+      <div class="btn-row" style="margin-top:8px"><button class="btn" data-act="genProfiles">Create entries for every SEG \u00D7 agent pair</button><button class="btn" data-act="fillExposed">Fill # exposed from SEG headcounts</button></div></div>
+    <div class="sec"><h2>Qualitative risk matrix</h2>${adMatrix('qual')}</div>
+    <div class="sec"><h2>Stage 2: quantitative OHRA</h2><p class="hint">Basis: ${esc(S.decision.uclBasis || 'AM UCL95')} against the applied OEL (${esc(S.decision.sources || 'source priority not set')}). Fixed-area samples are excluded: they cannot demonstrate compliance (App. 2, 10). Results are entered in the Exposure step.</p>
+      ${tableEditor('profiles', C.adQuantT, { key: 'adqt', noAdd: true, noDelete: true, empty: 'Add SEG \u00D7 hazard entries in Stage 1.' })}</div>
+    <div class="sec"><h2>Quantitative risk matrix</h2>${adMatrix('quant')}</div>
+    <div class="sec"><h2>Remedial Action Plan</h2><p class="hint">Non-ALARP entries (High and High-Medium) need a RAP following the hierarchy of controls. ${rapMissing.length ? `<b>${rapMissing.length} non-ALARP entr${rapMissing.length === 1 ? 'y has' : 'ies have'} no action yet.</b>` : ''}</p>
+      ${tableEditor('recs', C.recs, { filter: r => nonAlarp.some(p => p.id === r.profileId), key: 'rap', addLabel: 'Add RAP action', defaults: { status: 'Open', priority: '2 High' }, empty: nonAlarp.length ? 'No RAP actions yet.' : 'No non-ALARP entries.' })}
+      ${adApprovals('apRap', 'RAP endorsement and approval (Table 1, step 17)')}</div>
+    <div class="sec"><h2>Monitoring plan</h2>${tableEditor('profiles', C.plan, { key: 'plan', noAdd: true, noDelete: true, empty: 'Add entries above first.' })}</div>
+    <div class="sec"><h2>Occupational Health Hazard Risk Register</h2><p class="hint">Appendix 5 layout, built from the entries above. Submit to GHSEF and update as new exposure data arrives (KPI 1).</p>${adRegisterTable()}
+      <div class="btn-row" style="margin-top:8px"><button class="btn" data-act="exportRegister">Export register (CSV)</button></div></div>
+    <div class="sec"><h2>Qualitative OHRA approval</h2>${adApprovals('apQual', 'Endorsement and approval (Table 1, step 6)')}<div class="cols" style="margin-top:12px">${field('adnoc.reviewDate', 'OHRA review date', 'date')}</div></div>
+    <div class="sec"><h2>Deliverables compliance list</h2><p class="hint">Appendix 7. Tick each deliverable and give the report section.</p>
+      <div class="tw"><table class="grid"><thead><tr><th>OHRA requirement</th><th>Completed</th><th>Report section / page</th></tr></thead><tbody>${AD.compliance.map((c, i) => `<tr><td><span class="calc" style="white-space:normal">${esc(c)}</span></td><td><input type="checkbox" data-obj="adnoc.compliance.${i}.done" data-t="check" data-key="obj|adnoc.compliance.${i}.done"${S.adnoc.compliance[i].done ? ' checked' : ''} aria-label="Completed"></td><td><input type="text" data-obj="adnoc.compliance.${i}.ref" data-t="text" data-key="obj|adnoc.compliance.${i}.ref" value="${esc(S.adnoc.compliance[i].ref)}" aria-label="Report section"></td></tr>`).join('')}</tbody></table></div></div>`;
+}
+
+// ---- QA rules ----
+function adnocFlags(add) {
+  if (!isADNOC()) return;
+  const A = S.adnoc;
+  const tl = S.team.filter(t => t.role === 'Team Leader');
+  if (!tl.length) add('Flag', 'OHRA team', 'No Team Leader appointed (App. 1 Step 1, App. 4).', 'ad|tl');
+  tl.forEach(t => { if (!((t.degree || (t.cert && t.cert !== 'None')) && Number(t.years) >= 10)) add('Flag', 'OHRA team', `Team Leader ${t.name || ''} does not meet Appendix 4 (degree or certification, and 10+ years).`, 'ad|tlc|' + t.id); });
+  if (!S.team.some(t => /Physician/.test(t.role || ''))) add('Info', 'OHRA team', 'No occupational physician in the team (App. 4 Figure 1).', 'ad|phys');
+  A.act.forEach((x, i) => { if (!x.on && !x.note) add('Flag', 'Activity coverage', `Not covered and no reason: ${AD.activities[i]}.`, 'ad|act|' + i); });
+  if (!A.workshopDate) add('Flag', 'OHRA', 'Qualitative OHRA workshop not recorded (App. 1 Step 4).', 'ad|ws');
+  if (!A.reviewDate) add('Flag', 'OHRA', 'OHRA review date not set (clause 7(j)(viii)).', 'ad|rev');
+  S.profiles.forEach(p => {
+    const lab = profLabel(p), q = adQuant(p);
+    if (!p.severity || !p.likeQual) add('Flag', lab, 'Severity or qualitative likelihood not rated.', 'ad|p|' + p.id + '|rate');
+    if (p.severity && p.likeQual && !p.rationale) add('Flag', lab, 'Rating has no rationale.', 'ad|p|' + p.id + '|rat');
+    if (!p.routes) add('Info', lab, 'Route of exposure not recorded.', 'ad|p|' + p.id + '|route');
+    if (adQual(p) && adQuantRequired(p) && q.u.n < 2 && !p.noQuantReason) add('Flag', lab, 'Severity 3+ or Medium risk: quantitative assessment required, or record why it is not done.', 'ad|p|' + p.id + '|quant');
+    if ((p.alarp || adAlarpSuggest(p)).startsWith('Non-ALARP') && !S.recs.some(r => r.profileId === p.id)) add('Flag', lab, 'Non-ALARP with no Remedial Action Plan action.', 'ad|p|' + p.id + '|rap');
+    if (p.alarp && adAlarpSuggest(p) && p.alarp !== adAlarpSuggest(p)) add('Flag', lab, `ALARP decision (${p.alarp.split(':')[0]}) differs from the rating (${adAlarpSuggest(p).split(':')[0]}). Record why in the rationale.`, 'ad|p|' + p.id + '|alarp');
+    if (q.u.n >= 2 && q.u.n < 6) add('Info', lab, `${q.u.n} samples: AIHA recommends 6\u201310 per SEG; check adequacy in IHSTAT.`, 'ad|p|' + p.id + '|n');
+  });
+  const ap = (k, t) => { if (AD.approvers.some(([x]) => !A[k][x].name || !A[k][x].date)) add('Flag', 'Approvals', t, 'ad|' + k); };
+  if (S.profiles.length) ap('apQual', 'Qualitative OHRA endorsement / approvals incomplete (EOH, HSE Manager, Facility Manager).');
+  if (S.profiles.some(p => (p.alarp || adAlarpSuggest(p)).startsWith('Non-ALARP'))) ap('apRap', 'RAP endorsement / approvals incomplete.');
+  if (S.samples.some(s => s.stype === 'Area' && !s.blank)) add('Info', 'Exposure data', 'Fixed-area samples are kept for background levels only and excluded from compliance statistics.', 'ad|area');
+}
+
+// ---- report section ----
+function adnocReportSection(T) {
+  if (!isADNOC()) return '';
+  const A = S.adnoc;
+  const regHead = AD_REG_HEAD, reg = adRegisterTable(true).map(r => r.map(c => esc(c)));
+  const qual = S.profiles.map(p => [esc(profLabel(p)), esc(p.routes || ''), esc(p.exposedN ?? ''), p.severity ? `${p.severity} ${AD.sev[p.severity]}` : '\u2013', p.likeQual ? `${p.likeQual} ${AD.like[p.likeQual]}` : '\u2013', adQual(p) ? esc(adQual(p).code + ' ' + adQual(p).label) : '\u2013', esc(p.rationale || ''), p.noQuantReason ? esc(p.noQuantReason) : '']);
+  const quant = S.profiles.map(p => { const q = adQuant(p); return [esc(profLabel(p)), String(q.u.n), q.u.v ? `${F(q.u.v)} ${esc(q.u.unit)} (${q.u.basis})` : '\u2013', q.u.oel ? `${F(q.u.oel)} ${esc(q.u.unit)}` : '\u2013', q.u.ratio !== null ? F(100 * q.u.ratio, 3) + '%' : '\u2013', q.like || '\u2013', q.hrr ? esc(q.hrr.code + ' ' + q.hrr.label) : '\u2013', esc((p.alarp || adAlarpSuggest(p) || '').split(':')[0]), esc(q.freq || ''), adHSP(p) ? 'Yes' : '', adBio(p) ? 'Yes' : '']; });
+  const appr = k => AD.approvers.map(([x, l]) => [esc(l), esc(A[k][x].name), esc(A[k][x].date)]);
+  return `<h2>A. OHRA to ADNOC HSE-OH-ST03 (OHRM)</h2>
+  <p>Project phase: ${esc(A.phase)}. Approach: ${esc(A.approach)}. Scope: ${esc(A.scope)}. Qualitative OHRA workshop: ${esc(A.workshopDate || 'not recorded')}${A.workshopAttendees ? ` (${esc(A.workshopAttendees)})` : ''}. OEL hierarchy applied: ${esc(S.decision.sources)}. Quantitative basis: ${esc(S.decision.uclBasis)} compared with the applied OEL; arithmetic-mean UCL by generalized confidence interval (approximates Land's exact method used by IHSTAT).</p>
+  <h3>Assessment team</h3>${T(['Name', 'Role', 'Organisation', 'Certification', 'Years'], S.team.map(t => [esc(t.name), esc(t.role), esc(t.org), esc(t.cert), esc(t.years ?? '')]))}
+  <h3>Activity coverage (clause 7(e))</h3>${T(['Activity', 'Covered', 'Note'], AD.activities.map((a, i) => [esc(a), A.act[i].on ? 'Yes' : 'No', esc(A.act[i].note)]))}
+  <h3>Stage 1: qualitative OHRA</h3>${T(['SEG \u00D7 hazard', 'Routes', '# exposed', 'Severity', 'Likelihood', 'Health risk rating', 'Rationale', 'Not measured because'], qual)}
+  <h3>Stage 2: quantitative OHRA</h3>${T(['SEG \u00D7 hazard', 'n', '95% UCL', 'OEL', '% OEL', 'Likelihood', 'Health risk rating', 'ALARP', 'Survey frequency', 'HSP', 'Bio. monitoring'], quant)}
+  <h3>Occupational Health Hazard Risk Register (Appendix 5)</h3><div style="font-size:8pt">${T(regHead, reg)}</div>
+  <h3>Approvals</h3>${T(['Qualitative OHRA', 'Name', 'Date'], appr('apQual'))}${T(['Remedial Action Plan', 'Name', 'Date'], appr('apRap'))}
+  <p>OHRA review date: ${esc(A.reviewDate || 'not set')}. Retain this report with its laboratory and exposure assessment reports for at least 40 years from issue or the life of the facility, whichever is longer (clause 7(g)).</p>
+  <h3>Deliverables compliance list (Appendix 7)</h3>${T(['Requirement', 'Completed', 'Section / page'], AD.compliance.map((c, i) => [esc(c), A.compliance[i].done ? 'Yes' : 'No', esc(A.compliance[i].ref)]))}`;
+}
+
+function loadADNOCDemo() {
+  loadDemo(); applyADNOCPreset(); S.adnoc = adnocBlank();
+  Object.assign(S.adnoc, { phase: 'Operations', workshopDate: '2026-07-06', workshopAttendees: 'Operations, maintenance, HSE, OH physician, contractor representative', reviewDate: '2027-07-31' });
+  S.adnoc.act.forEach((a, i) => { a.on = i !== 2; if (i === 2) a.note = 'Emergency response covered by separate ERP health assessment (demo)'; });
+  S.team.push({ id: uid('tm'), name: 'Demo principal hygienist', role: 'Team Leader', org: 'Consultant', degree: true, cert: 'CIH (ABIH)', years: 18 },
+    { id: uid('tm'), name: 'Demo IH technician', role: 'IH technician', org: 'Consultant', cert: 'None', years: 6 },
+    { id: uid('tm'), name: 'Demo OH physician', role: 'OH SME (Occupational Physician)', org: 'Client', cert: 'Other equivalent', years: 12 });
+  S.oels.forEach(o => { o.source = 'Demo (enter Cabinet Decree 12/2006 or EH40 value)'; });
+  S.decision.sources = 'Demo, ' + AD.oelSources;
+  const set = [{ routes: 'Inhalation + dermal', severity: '6', likeQual: 'D', hoursWeek: 25, effects: 'Leukaemia (IARC 1); CNS depression', existingCtl: 'Open sampling; half-mask during sampling', rationale: 'Group 1 carcinogen; open sample points; partial RPE use' },
+    { routes: 'Inhalation', severity: '6', likeQual: 'C', hoursWeek: 2, effects: 'Acute respiratory paralysis, knockdown; eye irritation', existingCtl: 'Personal H\u2082S monitors; fixed detection; procedures', rationale: 'Acute lethal agent; short daily task with alarms' },
+    { routes: 'Inhalation', severity: '6', likeQual: 'D', hoursWeek: 40, effects: 'Irreversible neurotoxicity, kidney damage', existingCtl: 'Airline respirators during opening', rationale: 'Mercury deposits in exchangers; reliance on RPE' }];
+  S.profiles.forEach((p, i) => { Object.assign(p, set[i]); p.exposedN = (Number((byId('segs', p.segId) || {}).headOwn) || 0) + (Number((byId('segs', p.segId) || {}).headCon) || 0); });
+  const bz = S.agents.find(a => a.name === 'Benzene'); if (bz) { bz.iarc = '1'; bz.bei = true; }
+  const hg = S.agents.find(a => a.name.startsWith('Mercury')); if (hg) { hg.iarc = '3'; hg.bei = true; }
+}
+
 // ---------------- events ----------------
 document.addEventListener('change', async ev => {
   const el = ev.target, ds = el.dataset || {};
@@ -1196,6 +1484,10 @@ document.addEventListener('click', async ev => {
     case 'unsign': { const a = await ask('Withdraw sign-off', 'The report returns to draft. Give the reason and set the next revision letter.', [{ l: 'Reason', t: 'area' }], 'Withdraw'); if (!a || !a[0].trim()) return; S.signoff = null; S.report.revision = String.fromCharCode((S.report.revision || 'A').charCodeAt(0) + 1); commit('Sign-off withdrawn', a[0]); break; }
     case 'verifyAudit': { await auditQ; const v = await verifyAudit(); toast(v.ok ? `Audit chain intact (${v.n} entries).` : `Audit chain broken at entry ${v.at + 1}.`); break; }
     case 'aiDraft': aiDraft(); break;
+    case 'adnocPreset': if (S.decision.locked) return; applyADNOCPreset(); commit('ADNOC preset applied', 'Framework HSE-OH-ST03; OEL hierarchy ' + AD.oelSources); toast('ADNOC HSE-OH-ST03 preset applied. Check the OEL source names match your library.'); break;
+    case 'adnocDemo': if (S.audit.length && !confirm('Replace the current engagement with the ADNOC demo?')) return; loadADNOCDemo(); anaCache.clear(); saveLocal(); audit('Demo loaded', 'ADNOC OHRM demo engagement'); UI.tab = 'ohra'; render(); toast('ADNOC demo loaded. Demo OEL values are placeholders, not real limits.'); break;
+    case 'fillExposed': { let n = 0; S.profiles.forEach(p => { if (p.exposedN == null || p.exposedN === '') { const s = byId('segs', p.segId); if (s) { p.exposedN = (Number(s.headOwn) || 0) + (Number(s.headCon) || 0); n++; } } }); commit('Exposed counts filled', n + ' entries'); break; }
+    case 'exportRegister': download(fileBase() + '_Health_Hazard_Risk_Register.csv', toCSV([AD_REG_HEAD].concat(adRegisterTable(true))), 'text/csv'); audit('Risk register exported', fileBase()); break;
   }
 });
 window.addEventListener('beforeunload', () => saveLocal());
