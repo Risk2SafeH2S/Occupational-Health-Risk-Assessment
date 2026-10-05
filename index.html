@@ -828,7 +828,9 @@ const VIEWS = {
         ${tableEditor('oels', C.oels, { addLabel: 'Add OEL', defaults: { unit: 'ppm', avg: 'TWA (full shift)', status: 'Advisory' } })}</div>
       <div class="sec"><h2>Tasks</h2>${tableEditor('tasks', C.tasks, { addLabel: 'Add task', defaults: { routine: 'Routine' }, key: 'all' })}</div>
       <div class="sec"><h2>Screening readings</h2>${tableEditor('screening', C.screening, { addLabel: 'Add reading', defaults: { date: today() } })}</div>
-      <div class="sec"><h2>Immediate concerns</h2><p class="hint">Obvious uncontrolled exposures to notify the client now, without waiting for data.</p>${tableEditor('concerns', C.concerns, { addLabel: 'Add concern', defaults: { status: 'Open', sev: 'High' } })}</div>`;
+      <div class="sec"><h2>Immediate concerns</h2><p class="hint">Obvious uncontrolled exposures to notify the client now, without waiting for data.</p>${tableEditor('concerns', C.concerns, { addLabel: 'Add concern', defaults: { status: 'Open', sev: 'High' } })}</div>
+      <div class="sec"><h2>Sampling equipment</h2><p class="hint">Check Ex certification and calibration before mobilising. Samples taken with equipment not certified for the area's zone, or past its calibration date, are blocked in QA checks.</p>${tableEditor('equipment', C.equipment, { addLabel: 'Add equipment', defaults: { exZone: 'Not Ex-certified' } })}</div>
+      <div class="sec"><h2>Laboratories</h2><p class="hint">Record ISO/IEC 17025 accreditation and its scope. Results from a laboratory whose certificate had expired on the sample date are flagged.</p>${tableEditor('labs', C.labs, { addLabel: 'Add laboratory' })}</div>`;
   },
   segs() {
     return head('Similar exposure groups', 'Group by process, task, agent and environment, not job title. Shift length drives the OEL adjustment for each group.') +
