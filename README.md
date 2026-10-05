@@ -1,5 +1,4 @@
-# Occupational-Health-Risk-Assessment
-# OHA Studio
+# OHA Studio (v1.1.0)
 
 **Occupational hygiene assessment studio by Risk2Safe.** It carries an IH engagement from scope to a signed report: OHID, similar exposure groups (SEGs), OHRA, exposure statistics (AIHA and EN 689), control evaluation and report generation.
 
@@ -20,12 +19,14 @@ OHA Studio is a single `index.html` file that runs entirely in the browser. Enga
 | 4 · Exposure | Sample entry with flow, equipment, lab, context, blanks and exclusions, and CSV import of lab results. Runs the statistics engine and draws a log-probability plot. Ends with the hygienist's recorded decision. |
 | 5 · Controls | Control evaluation by hierarchy, RPE adequacy (required PF vs assigned PF), recommendations, the reassessment schedule and MOC review flags. Close-out covers handover and the exposure-database export. |
 | 6 · Report | Report preview with print to PDF, Word (.doc) and HTML. Optional AI draft of the executive summary. Sign-off is blocked by open QA items and freezes a SHA-256 snapshot hash. |
+| ADNOC OHRM | Optional **HSE-OH-ST03** framework, chosen in the decision standard or with the preset button. It adds an OHID set-up block covering project phase, approach, workshop, the assessment team with an Appendix 4 competency check, clause 7(e) activity coverage and the Appendix 6 information checklist. It also adds a two-stage OHRA: severity 1–6 and likelihood A–F on the Appendix 9 6 × 6 matrix, and quantitative likelihood from the 95% UCL band. Outputs include the survey frequency, HSP and biological-monitoring triggers, a RAP with EOH/HSE/Facility approvals, the Appendix 5 Health Hazard Risk Register (CSV export) and the Appendix 7 deliverables list. |
 | QA checks | About 25 validation rules graded Block, Flag or Info. Flags need an acknowledgement note, which carries into report limitations. |
 | Audit | Hash-chained audit trail of every edit, with chain verification. |
 
 ### Statistics engine (v1.0.0)
 
-- Lognormal descriptive statistics: GM, GSD, arithmetic mean with Cox UCL95, X95.
+- Lognormal descriptive statistics: GM, GSD, arithmetic mean, X95.
+- **Arithmetic-mean 95% UCL** by generalized confidence interval (Krishnamoorthy & Mathew), seeded so results are reproducible. It approximates Land's exact method used by IHSTAT; a simulation in the test suite confirms about 95% coverage. Cox's approximation is shown for reference only, because it under-covers at small n.
 - **X95 upper confidence limit** and **exceedance fraction with UCL**, from exact noncentral-t calculations (no lookup tables).
 - **EN 689 preliminary test** (n = 3–5) and **statistical test** (UTL 70%, 95% vs OEL, n ≥ 6).
 - **AIHA exposure category** from X95 and from its UCL.
@@ -129,11 +130,30 @@ BZ-102,0.05,Y
 - Word export is HTML-based (`.doc`) and opens in Word without native styles.
 - Not yet implemented:
   - Bayesian decision analysis (AIHA category probabilities from a prior).
-  - Land's exact UCL; Cox's approximation is used instead.
+  - Land's exact UCL; the GCI method is used instead. Cross-check a few profiles against IHSTAT on your first ADNOC engagement.
   - Datalogger time-series import and peak analysis for acute toxic gases.
   - Noise (ISO 9612) and heat stress (WBGT) calculators.
   - Unit conversion of results; results must be entered in the unit of the selected OEL.
 - QA rules use fixed thresholds (5% flow drift, 10% blanks, 70% of shift duration, GSD > 3). They are not yet configurable per firm.
+
+## ADNOC HSE-OH-ST03 notes
+
+The ADNOC rules follow HSE-OH-ST03 Version 1 (August 2019). Three points in the standard are inconsistent, so the app makes these choices; change them if your ADNOC company directs otherwise:
+
+1. **OEL hierarchy.** Appendix 2, sections 3 and 10, give: ADNOC HSE-OH-ST02 / Cabinet Decree 12 of 2006 Annex 7b, then UK EH40 WEL, then OSHA PEL, then NIOSH REL, then ACGIH TLV. The Appendix 5 legend instead puts NIOSH REL before OSHA PEL. The preset uses the Appendix 2 order, which is stated twice. The priority list is editable in the decision standard and matches on source names, so enter OEL sources with those names.
+2. **Survey frequency.** The Appendix 2 Figure 1 note gives 1–10% OEL every 5 years and 10–50% every 4 years. Section (a)(ii)-2 gives under 1% every 5 years, 1–10% every 4, 10–50% every 3, 50–100% annual. The app uses section (a)(ii)-2 because clause 7(h) cites it.
+3. **"95% UCL" basis.** The standard defines the UCL as the upper confidence limit of the arithmetic mean and directs IHSTAT, so the default basis is AM UCL95. X95 UCL95 can be selected instead.
+
+Other rules the app applies:
+
+- Severity is rated on health effect alone; likelihood takes account of existing controls.
+- Quantitative assessment is flagged as required for severity 3 or above or a Medium rating, unless a justification is recorded.
+- High and High-Medium ratings are treated as non-ALARP and require a RAP.
+- A 95% UCL above 50% of the OEL places the SEG in the Health Surveillance Plan.
+- Medium-and-above risk for an agent with a BMGV or BEI triggers biological monitoring.
+- Fixed-area samples are excluded from compliance statistics.
+
+Severity and likelihood suggestions are prompts only: severity from the IARC group or acute toxicity, likelihood from exposure hours per week. Rate against the full Appendix 3 descriptors. The matrix colours were read from Appendix 9 and are checked cell by cell in the test suite.
 
 ## Roadmap
 
