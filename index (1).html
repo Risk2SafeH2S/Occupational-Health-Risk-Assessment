@@ -1,0 +1,1209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OHA Studio · Risk2Safe</title>
+<meta name="description" content="Occupational hygiene assessment studio: OHID, SEGs, OHRA, exposure statistics (AIHA and EN 689) and report generation. Runs entirely in your browser.">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src https://api.anthropic.com https://api.openai.com; frame-src 'self' blob:; object-src 'none'; base-uri 'none'">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231D5FA8'/%3E%3Cpath d='M7 23 L13 15 L18 19 L25 8' stroke='white' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#EDF1F3; --panel:#FFFFFF; --ink:#16232B; --steel:#55656F; --mute:#7B8A93;
+  --rule:#D3DBE0; --rule-strong:#B7C3CA; --accent:#1D5FA8; --accent-ink:#164C87; --accent-soft:#E4EEF8;
+  --ok:#2E7A4B; --ok-soft:#E3F1E8; --warn:#9A5F0C; --warn-soft:#FBF0DC; --crit:#B3261E; --crit-soft:#FBE6E4;
+  --c0:#D3E6F1; --c1:#A6D1B6; --c2:#EAD88F; --c3:#EBA960; --c4:#CC4B3F;
+  --sans:'Public Sans', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  --serif:'Source Serif 4', Georgia, 'Times New Roman', serif;
+  --r-sm:4px; --r-md:8px;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.5 var(--sans);font-variant-numeric:tabular-nums}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+a{color:var(--accent)}
+.app{display:grid;grid-template-columns:248px 1fr;grid-template-rows:56px 1fr;height:100vh}
+header.top{grid-column:1/3;display:flex;align-items:center;gap:16px;padding:0 20px;background:var(--panel);border-bottom:1px solid var(--rule)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:-.01em;white-space:nowrap}
+.brand svg{flex:none}
+.brand small{font-weight:500;color:var(--steel)}
+.eng-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--steel)}
+.eng-title b{color:var(--ink);font-weight:600}
+.save-state{font-size:12px;color:var(--mute);white-space:nowrap}
+.top .actions{display:flex;gap:8px}
+nav.rail{background:var(--panel);border-right:1px solid var(--rule);overflow-y:auto;padding:16px 0 24px}
+.train{position:relative;margin:0;padding:0;list-style:none}
+.train::before{content:"";position:absolute;left:31px;top:14px;bottom:14px;width:2px;background:var(--rule)}
+.step{position:relative}
+.step button{display:grid;grid-template-columns:24px 1fr;gap:12px;align-items:center;width:100%;text-align:left;border:0;background:none;padding:8px 16px 8px 20px;cursor:pointer;border-left:3px solid transparent}
+.step button:hover{background:var(--paper)}
+.step button[aria-current="page"]{background:var(--accent-soft);border-left-color:var(--accent)}
+.dot{position:relative;z-index:1;width:24px;height:24px;border-radius:50%;border:2px solid var(--rule-strong);background:var(--panel);display:grid;place-items:center;font-size:11px;font-weight:700;color:var(--steel)}
+.dot.started{border-color:var(--accent);color:var(--accent)}
+.dot.done{background:var(--accent);border-color:var(--accent);color:#fff}
+.step .lbl{display:flex;flex-direction:column;line-height:1.25}
+.step .lbl b{font-weight:600;font-size:13.5px}
+.step .lbl span{font-size:12px;color:var(--steel)}
+.rail-sep{height:1px;background:var(--rule);margin:14px 20px}
+.rail-links button{display:flex;justify-content:space-between;align-items:center;width:100%;border:0;background:none;padding:8px 20px;text-align:left;cursor:pointer;font-weight:500;border-left:3px solid transparent}
+.rail-links button:hover{background:var(--paper)}
+.rail-links button[aria-current="page"]{background:var(--accent-soft);border-left-color:var(--accent)}
+.badge{display:inline-block;min-width:20px;padding:0 6px;border-radius:10px;font-size:11.5px;font-weight:700;text-align:center;line-height:18px}
+.badge.crit{background:var(--crit);color:#fff}.badge.warn{background:var(--warn-soft);color:var(--warn)}.badge.ok{background:var(--ok-soft);color:var(--ok)}
+main{overflow:auto;padding:24px 28px 64px}
+.page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:20px;flex-wrap:wrap}
+h1{font-size:22px;line-height:1.2;margin:0;letter-spacing:-.015em}
+.page-head p{margin:4px 0 0;color:var(--steel);max-width:72ch}
+h2{font-size:16px;margin:0 0 4px;letter-spacing:-.005em}
+h3{font-size:14px;margin:16px 0 6px}
+.sec{background:var(--panel);border:1px solid var(--rule);border-radius:var(--r-md);padding:18px 20px;margin-bottom:16px}
+.sec>p.hint,.hint{color:var(--steel);margin:0 0 12px;max-width:80ch;font-size:13px}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px 16px}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:12.5px;font-weight:600;color:var(--steel)}
+.field input,.field select,.field textarea{border:1px solid var(--rule-strong);border-radius:var(--r-sm);padding:7px 9px;background:#fff}
+.field textarea{resize:vertical;min-height:64px}
+input:disabled,select:disabled,textarea:disabled{background:var(--paper);color:var(--steel)}
+.checks{display:flex;flex-wrap:wrap;gap:6px 18px;margin:4px 0 8px}
+.checks label{display:flex;gap:6px;align-items:center;font-weight:500;color:var(--ink);font-size:13.5px}
+.btn{border:1px solid var(--rule-strong);background:var(--panel);border-radius:var(--r-sm);padding:7px 12px;cursor:pointer;font-weight:600;font-size:13px;white-space:nowrap}
+.btn:hover{border-color:var(--steel)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{background:var(--accent-ink)}
+.btn.ghost{border-style:dashed;margin-top:8px;color:var(--accent)}
+.btn.danger{color:var(--crit)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.tw{overflow-x:auto;border:1px solid var(--rule);border-radius:var(--r-sm)}
+table.grid{border-collapse:collapse;width:100%;font-size:13px}
+.grid th{background:#F5F7F8;text-align:left;font-weight:600;color:var(--steel);padding:7px 8px;border-bottom:1px solid var(--rule);white-space:nowrap;font-size:12.5px}
+.grid td{border-bottom:1px solid var(--rule);padding:3px 4px;vertical-align:top}
+.grid tr:last-child td{border-bottom:0}
+.grid input[type=text],.grid input[type=number],.grid input[type=date],.grid select,.grid textarea{width:100%;min-width:90px;border:1px solid transparent;background:transparent;padding:5px 6px;border-radius:3px}
+.grid input:hover,.grid select:hover,.grid textarea:hover{border-color:var(--rule)}
+.grid input:focus,.grid select:focus,.grid textarea:focus{border-color:var(--accent);background:#fff;outline:none}
+.grid input[type=checkbox]{margin:8px}
+.grid td.act,.grid th.act{width:32px;text-align:center}
+.grid td.empty{padding:14px;color:var(--mute);text-align:center}
+.grid .calc{display:block;padding:5px 6px;white-space:nowrap}
+.icon{border:0;background:none;cursor:pointer;color:var(--mute);font-size:18px;line-height:1;padding:4px 8px;border-radius:3px}
+.icon:hover{color:var(--crit);background:var(--crit-soft)}
+table.kv{border-collapse:collapse;font-size:13px;width:100%}
+.kv th{text-align:left;color:var(--steel);font-weight:500;padding:4px 12px 4px 0;white-space:nowrap;width:1%}
+.kv td{padding:4px 0}
+.pill{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;font-weight:600;white-space:nowrap}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}.pill.warn{background:var(--warn-soft);color:var(--warn)}.pill.crit{background:var(--crit-soft);color:var(--crit)}.pill.info{background:var(--accent-soft);color:var(--accent-ink)}.pill.none{background:var(--paper);color:var(--steel)}
+.cat{display:inline-grid;place-items:center;width:26px;height:22px;border-radius:4px;font-weight:700;font-size:12px;color:var(--ink)}
+.cat0{background:var(--c0)}.cat1{background:var(--c1)}.cat2{background:var(--c2)}.cat3{background:var(--c3)}.cat4{background:var(--c4);color:#fff}
+.split{display:grid;grid-template-columns:300px 1fr;gap:16px;align-items:start}
+.split>*,.stats-grid>*,.cols>*{min-width:0}
+.plist{background:var(--panel);border:1px solid var(--rule);border-radius:var(--r-md);overflow:hidden;position:sticky;top:0}
+.plist button{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid var(--rule);background:none;padding:10px 14px;cursor:pointer}
+.plist button:last-child{border-bottom:0}
+.plist button:hover{background:var(--paper)}
+.plist button[aria-current="true"]{background:var(--accent-soft);box-shadow:inset 3px 0 0 var(--accent)}
+.plist b{display:block;font-size:13.5px}
+.plist span{font-size:12px;color:var(--steel)}
+.stats-grid{display:grid;grid-template-columns:minmax(260px,1fr) minmax(320px,1.3fr);gap:16px}
+.plot svg{width:100%;height:auto;display:block}
+.flag{display:grid;grid-template-columns:64px 1fr auto;gap:12px;align-items:start;padding:10px 0;border-bottom:1px solid var(--rule)}
+.flag:last-child{border-bottom:0}
+.flag .where{font-size:12px;color:var(--steel)}
+.callout{border-left:3px solid var(--accent);background:var(--accent-soft);padding:10px 14px;border-radius:0 var(--r-sm) var(--r-sm) 0;margin:0 0 12px;font-size:13px}
+.callout.warn{border-color:var(--warn);background:var(--warn-soft)}
+.callout.crit{border-color:var(--crit);background:var(--crit-soft)}
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.metric{border:1px solid var(--rule);border-radius:var(--r-sm);padding:10px 12px}
+.metric b{display:block;font-size:20px;line-height:1.2}
+.metric span{font-size:12px;color:var(--steel)}
+.heat{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-top:8px}
+.heat div{border-radius:4px;padding:8px;text-align:center;font-size:12px}
+.heat div b{display:block;font-size:18px}
+iframe.report{width:100%;height:78vh;border:1px solid var(--rule);border-radius:var(--r-sm);background:#fff}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;word-break:break-all}
+dialog{border:1px solid var(--rule);border-radius:var(--r-md);padding:20px;max-width:520px;width:92vw}
+dialog::backdrop{background:rgba(22,35,43,.45)}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:9px 16px;border-radius:var(--r-sm);font-size:13px;z-index:50;opacity:0;transition:opacity .2s}
+.toast.show{opacity:1}
+.landing{max-width:760px}
+.landing h1{font-size:30px;letter-spacing:-.02em}
+.landing ol{padding-left:20px;color:var(--steel)}
+.landing ol b{color:var(--ink)}
+@media (max-width:900px){.app{grid-template-columns:1fr;grid-template-rows:auto auto 1fr}header.top{flex-wrap:wrap;padding:8px 14px;height:auto}nav.rail{border-right:0;border-bottom:1px solid var(--rule);max-height:210px}.split,.stats-grid{grid-template-columns:1fr}.plist{position:static}main{padding:16px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+@media print{.app>header,.app>nav{display:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#1D5FA8"/><path d="M7 23 L13 15 L18 19 L25 8" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round"/></svg>
+      <span>OHA Studio <small>Risk2Safe</small></span>
+    </div>
+    <div class="eng-title" id="engTitle"></div>
+    <span class="save-state" id="saveState" aria-live="polite"></span>
+    <div class="actions">
+      <button class="btn" data-act="openFile">Open file</button>
+      <button class="btn primary" data-act="saveFile">Save file</button>
+    </div>
+  </header>
+  <nav class="rail" id="rail" aria-label="Workflow"></nav>
+  <main id="main" tabindex="-1"></main>
+</div>
+<input type="file" id="fileIn" accept=".json,.ohs,.ohs.json,application/json" hidden>
+<input type="file" id="csvIn" accept=".csv,text/csv" hidden>
+<dialog id="dlg"></dialog>
+<div class="toast" id="toast" role="status"></div>
+<script>
+/*STATS-BEGIN*/
+const OHStats = (() => {
+  const VERSION = '1.0.0';
+
+  // ---------- basic distributions ----------
+  function normCdf(x) {
+    // W. J. Cody-style erfc via rational approximation (abs error < 1.2e-7)
+    const z = Math.abs(x) / Math.SQRT2;
+    const t = 1 / (1 + 0.5 * z);
+    const r = t * Math.exp(-z * z - 1.26551223 + t * (1.00002368 + t * (0.37409196 + t * (0.09678418 +
+      t * (-0.18628806 + t * (0.27886807 + t * (-1.13520398 + t * (1.48851587 + t * (-0.82215223 + t * 0.17087277)))))))));
+    return x >= 0 ? 1 - r / 2 : r / 2;
+  }
+  function normInv(p) {
+    // Acklam's algorithm with one Newton refinement step
+    if (p <= 0) return -Infinity; if (p >= 1) return Infinity;
+    const a = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02, 1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00];
+    const b = [-5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02, 6.680131188771972e+01, -1.328068155288572e+01];
+    const c = [-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00, -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00];
+    const d = [7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00, 3.754408661907416e+00];
+    const pl = 0.02425; let q, r, x;
+    if (p < pl) { q = Math.sqrt(-2 * Math.log(p)); x = (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1); }
+    else if (p <= 1 - pl) { q = p - 0.5; r = q * q; x = (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1); }
+    else { q = Math.sqrt(-2 * Math.log(1 - p)); x = -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1); }
+    const e = normCdf(x) - p; const u = e * Math.sqrt(2 * Math.PI) * Math.exp(x * x / 2);
+    return x - u / (1 + x * u / 2);
+  }
+  function lgamma(x) {
+    const g = 7, cf = [0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059, 12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
+    if (x < 0.5) return Math.log(Math.PI / Math.abs(Math.sin(Math.PI * x))) - lgamma(1 - x);
+    x -= 1; let a = cf[0]; const t = x + g + 0.5;
+    for (let i = 1; i < g + 2; i++) a += cf[i] / (x + i);
+    return 0.5 * Math.log(2 * Math.PI) + (x + 0.5) * Math.log(t) - t + Math.log(a);
+  }
+
+  // Noncentral t CDF: P(T <= t), T = (Z + delta) / S, S = sqrt(V/nu), V ~ chi2(nu)
+  function nctCdf(t, nu, delta) {
+    const N = 4000, smax = 1 + 14 / Math.sqrt(2 * nu) + 2;
+    const h = smax / N;
+    const lc = Math.log(2) + (nu / 2) * Math.log(nu / 2) - lgamma(nu / 2);
+    const f = s => s <= 0 ? 0 : Math.exp(lc + (nu - 1) * Math.log(s) - nu * s * s / 2) * normCdf(t * s - delta);
+    let sum = f(0) + f(smax);
+    for (let i = 1; i < N; i++) sum += f(i * h) * (i % 2 ? 4 : 2);
+    return Math.min(1, Math.max(0, sum * h / 3));
+  }
+  function nctInv(p, nu, delta) {
+    let lo = delta - 10, hi = delta + 10;
+    while (nctCdf(lo, nu, delta) > p) lo -= 10;
+    while (nctCdf(hi, nu, delta) < p) hi += 10;
+    for (let i = 0; i < 80; i++) { const m = (lo + hi) / 2; if (nctCdf(m, nu, delta) < p) lo = m; else hi = m; }
+    return (lo + hi) / 2;
+  }
+  const tInv = (p, nu) => nctInv(p, nu, 0);
+
+  // One-sided tolerance factor: UCL(gamma) of the p-th percentile = exp(ybar + K s)
+  function kFactor(n, p, gamma) { return nctInv(gamma, n - 1, normInv(p) * Math.sqrt(n)) / Math.sqrt(n); }
+
+  // ---------- shift adjustment ----------
+  function briefScala(hoursPerShift) {
+    const h = Number(hoursPerShift);
+    if (!h || h <= 8) return 1;
+    return (8 / h) * ((24 - h) / 16);
+  }
+
+  // ---------- non-detects: robust ROS (Helsel 2005), multiple detection limits ----------
+  function ros(obs) {
+    const det = obs.filter(o => !o.nd).map(o => o.v);
+    const nds = obs.filter(o => o.nd).map(o => o.v);
+    if (!nds.length) return { values: det.slice(), method: 'No non-detects', imputed: 0 };
+    const frac = nds.length / obs.length;
+    if (det.length < 3 || frac > 0.8) {
+      return { values: det.concat(nds.map(v => v / Math.SQRT2)), method: 'Substitution LOD/\u221A2 (too few detects for ROS)', imputed: nds.length, fallback: true };
+    }
+    const dls = [...new Set(nds)].sort((a, b) => a - b), J = dls.length;
+    const pe = new Array(J + 1).fill(0);
+    for (let j = J - 1; j >= 0; j--) {
+      const lo = dls[j], hi = j + 1 < J ? dls[j + 1] : Infinity;
+      const A = det.filter(x => x >= lo && x < hi).length;
+      const B = det.filter(x => x < lo).length + nds.filter(x => x <= lo).length;
+      pe[j] = pe[j + 1] + (A + B > 0 ? (A / (A + B)) * (1 - pe[j + 1]) : 0);
+    }
+    const pts = []; // detects: {p, v}
+    const below = det.filter(x => x < dls[0]).sort((a, b) => a - b);
+    below.forEach((v, i) => pts.push({ p: (1 - pe[0]) * (i + 1) / (below.length + 1), v }));
+    for (let j = 0; j < J; j++) {
+      const lo = dls[j], hi = j + 1 < J ? dls[j + 1] : Infinity;
+      const grp = det.filter(x => x >= lo && x < hi).sort((a, b) => a - b);
+      grp.forEach((v, i) => pts.push({ p: (1 - pe[j]) + (pe[j] - pe[j + 1]) * (i + 1) / (grp.length + 1), v }));
+    }
+    const xs = pts.map(q => normInv(q.p)), ys = pts.map(q => Math.log(q.v));
+    const mx = mean(xs), my = mean(ys);
+    let sxy = 0, sxx = 0; xs.forEach((x, i) => { sxy += (x - mx) * (ys[i] - my); sxx += (x - mx) ** 2; });
+    const slope = sxy / sxx, icpt = my - slope * mx;
+    const imputed = [];
+    for (let j = 0; j < J; j++) {
+      const c = nds.filter(x => x === dls[j]).length;
+      for (let r = 1; r <= c; r++) imputed.push(Math.exp(icpt + slope * normInv((1 - pe[j]) * r / (c + 1))));
+    }
+    return { values: det.concat(imputed), method: 'Robust ROS (Helsel)', imputed: imputed.length };
+  }
+
+  const mean = a => a.reduce((s, x) => s + x, 0) / a.length;
+  const sd = a => { const m = mean(a); return Math.sqrt(a.reduce((s, x) => s + (x - m) ** 2, 0) / (a.length - 1)); };
+
+  // Probability-plot correlation coefficient on logs (lognormal fit check)
+  function ppcc(values) {
+    const y = values.map(Math.log).sort((a, b) => a - b), n = y.length;
+    const x = y.map((_, i) => normInv((i + 1 - 0.375) / (n + 0.25)));
+    const mx = mean(x), my = mean(y); let sxy = 0, sxx = 0, syy = 0;
+    x.forEach((xi, i) => { sxy += (xi - mx) * (y[i] - my); sxx += (xi - mx) ** 2; syy += (y[i] - my) ** 2; });
+    return syy === 0 ? 1 : sxy / Math.sqrt(sxx * syy);
+  }
+
+  function efUCL(n, ybar, s, lnOel, gamma) {
+    const tObs = Math.sqrt(n) * (lnOel - ybar) / s;
+    let lo = -60, hi = 60;
+    for (let i = 0; i < 70; i++) { const m = (lo + hi) / 2; if (nctCdf(tObs, n - 1, m) > gamma) lo = m; else hi = m; }
+    return normCdf(-((lo + hi) / 2) / Math.sqrt(n));
+  }
+
+  const EN689_PRELIM = { 3: 0.1, 4: 0.15, 5: 0.2 };
+  function aihaCategory(ratio) {
+    if (ratio <= 0.01) return 0; if (ratio <= 0.1) return 1; if (ratio <= 0.5) return 2; if (ratio <= 1) return 3; return 4;
+  }
+
+  // Main analysis. obs: [{v, nd}], oel: number in same unit (already shift-adjusted if required)
+  function analyse(obs, oel, opt = {}) {
+    const gA = opt.confAIHA || 0.95, gE = opt.confEN || 0.70;
+    const n = obs.length, out = { n, nd: obs.filter(o => o.nd).length, engine: VERSION, oel, flags: [] };
+    if (!n) return out;
+    out.max = Math.max(...obs.map(o => o.v));
+    out.min = Math.min(...obs.map(o => o.v));
+    // EN 689 preliminary test (3-5 samples)
+    if (n >= 3 && n <= 5 && oel) {
+      const thr = EN689_PRELIM[n] * oel;
+      if (obs.some(o => !o.nd && o.v > oel)) out.en689 = { test: 'Preliminary', outcome: 'Non-compliance', note: 'A result exceeds the OEL.' };
+      else if (obs.every(o => o.v < thr)) out.en689 = { test: 'Preliminary', outcome: 'Compliance', note: `All results below ${EN689_PRELIM[n]} \u00D7 OEL.` };
+      else out.en689 = { test: 'Preliminary', outcome: 'No decision', note: 'Collect at least 6 samples for the statistical test.' };
+    }
+    if (n < 2) { out.flags.push('Fewer than 2 results: no statistics.'); return out; }
+    const r = ros(obs); out.censorMethod = r.method; out.imputed = r.imputed;
+    if (r.fallback) out.flags.push('Too few detects for ROS; substitution used (labelled fallback).');
+    const y = r.values.map(Math.log), ybar = mean(y), s = sd(y);
+    out.gm = Math.exp(ybar); out.gsd = Math.exp(s);
+    out.am = Math.exp(ybar + s * s / 2);
+    out.x95 = Math.exp(ybar + 1.6448536 * s);
+    out.ppcc = ppcc(r.values);
+    if (n >= 3) {
+      out.kAIHA = kFactor(n, 0.95, gA); out.x95ucl = Math.exp(ybar + out.kAIHA * s);
+      const tq = tInv(0.95, n - 1);
+      out.amUclCox = Math.exp(ybar + s * s / 2 + tq * Math.sqrt(s * s / n + s ** 4 / (2 * (n - 1))));
+    }
+    if (out.gsd > 3) out.flags.push('GSD > 3: review SEG homogeneity (EN 689).');
+    if (out.nd / n > 0.5) out.flags.push('More than 50% non-detects.');
+    if (out.ppcc < 0.9 && n >= 5) out.flags.push('Poor lognormal fit (probability-plot r < 0.90): check for mixed groups.');
+    if (oel && s > 0) {
+      const lnO = Math.log(oel);
+      out.ef = 1 - normCdf((lnO - ybar) / s);
+      if (n >= 3) out.efUcl = efUCL(n, ybar, s, lnO, gA);
+      out.ratioX95 = out.x95 / oel;
+      out.aihaCat = aihaCategory(out.x95 / oel);
+      if (out.x95ucl) out.aihaCatUcl = aihaCategory(out.x95ucl / oel);
+      if (n >= 6) {
+        const UT = kFactor(n, 0.95, gE), UR = (lnO - ybar) / s;
+        out.en689 = { test: 'Statistical', UT, UR, utl: Math.exp(ybar + UT * s),
+          outcome: UR >= UT ? 'Compliance' : 'Non-compliance',
+          note: `UTL(${Math.round(gE * 100)}%, 95%) = ${fmt(Math.exp(ybar + UT * s))} vs OEL ${fmt(oel)}.` };
+      }
+    }
+    out.plot = plotPoints(r.values, obs);
+    return out;
+  }
+
+  function plotPoints(values, obs) {
+    const ndCount = obs.filter(o => o.nd).length, detCount = obs.length - ndCount;
+    const sorted = values.map((v, i) => ({ v, imputed: i >= detCount })).sort((a, b) => a.v - b.v), n = sorted.length;
+    return sorted.map((p, i) => ({ z: normInv((i + 1 - 0.375) / (n + 0.25)), v: p.v, imputed: p.imputed && ndCount > 0 }));
+  }
+
+  function fmt(x, d = 3) {
+    if (x === undefined || x === null || isNaN(x)) return '\u2013';
+    if (x === 0) return '0';
+    const a = Math.abs(x);
+    if (a >= 1000) return x.toFixed(0);
+    return Number(x.toPrecision(d)).toString();
+  }
+
+  return { VERSION, normCdf, normInv, nctCdf, nctInv, tInv, kFactor, briefScala, ros, ppcc, efUCL, aihaCategory, analyse, fmt, mean, sd };
+})();
+/*STATS-END*/
+
+</script>
+<script>
+'use strict';
+const APP = { name: 'OHA Studio', version: '1.0.0', format: 'ohastudio-engagement', formatVersion: 1 };
+const STORE_KEY = 'ohastudio.autosave.v1', AI_KEY = 'ohastudio.ai.v1';
+const F = OHStats.fmt;
+
+// ---------------- state ----------------
+function blank() {
+  return {
+    meta: { format: APP.format, formatVersion: APP.formatVersion, appVersion: APP.version, created: new Date().toISOString(), id: uid('eng') },
+    user: '',
+    engagement: { client: '', site: '', country: '', type: 'Baseline OHA', trigger: '', start: '', end: '', consultant: '', principal: '', climate: 'Hot (Gulf / desert)',
+      facilities: ['Process units'], workforce: ['Own staff', 'Contractors'], seasons: ['Summer'], exclusions: '' },
+    decision: { oelRule: 'Most protective of applicable limits', statTest: 'AIHA and EN 689 (both)', confAIHA: 0.95, confEN: 0.70, shiftModel: 'Brief & Scala', minN: 6, sources: '', locked: false, lockedBy: '', lockedAt: '' },
+    kickoff: { date: '', attendees: '', access: '', h2s: '', notes: '' },
+    datareq: [], areas: [], agents: [], oels: [], tasks: [], screening: [], concerns: [],
+    segs: [], profiles: [], samples: [], equipment: [], labs: [], controls: [], recs: [], moc: [],
+    handover: { date: '', recipient: '', notes: '' },
+    report: { title: 'Occupational Hygiene Assessment', ref: '', revision: 'A', summary: '', summaryIsAI: false, conclusions: '', limitationsExtra: '' },
+    qaAck: {}, signoff: null, audit: []
+  };
+}
+function uid(p) { return p + '-' + Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4); }
+let S = loadLocal() || blank();
+let UI = { tab: 'home', profileId: null, reportHtml: '' };
+let AI = loadAI();
+
+function loadLocal() { try { const t = localStorage.getItem(STORE_KEY); return t ? migrate(JSON.parse(t)) : null; } catch (e) { return null; } }
+function migrate(d) { const b = blank(); for (const k in b) if (d[k] === undefined) d[k] = b[k]; for (const k of ['engagement', 'decision', 'kickoff', 'handover', 'report']) d[k] = Object.assign({}, b[k], d[k]); return d; }
+function saveLocal() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(S)); setSave('Autosaved ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })); }
+  catch (e) { setSave('Autosave failed: storage full. Save to file now.'); }
+}
+function loadAI() { try { return JSON.parse(localStorage.getItem(AI_KEY)) || { provider: 'anthropic', model: 'claude-sonnet-5-5', key: '', remember: false }; } catch (e) { return { provider: 'anthropic', model: 'claude-sonnet-5-5', key: '', remember: false }; } }
+function saveAI() { try { if (AI.remember) localStorage.setItem(AI_KEY, JSON.stringify(AI)); else localStorage.removeItem(AI_KEY); } catch (e) { } }
+
+// ---------------- helpers ----------------
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const byId = (col, id) => S[col].find(x => x.id === id);
+const nm = (col, id, f = 'name') => { const r = byId(col, id); return r ? (r[f] || r.code || r.name || '(unnamed)') : ''; };
+const today = () => new Date().toISOString().slice(0, 10);
+function setSave(t) { const el = $('#saveState'); if (el) el.textContent = t; }
+function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove('show'), 2600); }
+function getPath(o, p) { return p.split('.').reduce((a, k) => a == null ? a : a[k], o); }
+function setPath(o, p, v) { const ks = p.split('.'), last = ks.pop(); const t = ks.reduce((a, k) => a[k], o); t[last] = v; }
+async function sha256(t) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t)); return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join(''); }
+
+// ---------------- audit (hash chained) ----------------
+let auditQ = Promise.resolve();
+function audit(action, detail) {
+  const entry = { t: new Date().toISOString(), user: S.user || 'unnamed user', action, detail: String(detail || '').slice(0, 400) };
+  auditQ = auditQ.then(async () => {
+    const prev = S.audit.length ? S.audit[S.audit.length - 1].hash : 'GENESIS';
+    entry.prev = prev; entry.hash = await sha256(prev + JSON.stringify({ t: entry.t, user: entry.user, action: entry.action, detail: entry.detail }));
+    S.audit.push(entry); saveLocal();
+  });
+  return auditQ;
+}
+async function verifyAudit() {
+  let prev = 'GENESIS';
+  for (let i = 0; i < S.audit.length; i++) {
+    const e = S.audit[i];
+    const h = await sha256(prev + JSON.stringify({ t: e.t, user: e.user, action: e.action, detail: e.detail }));
+    if (e.prev !== prev || e.hash !== h) return { ok: false, at: i };
+    prev = e.hash;
+  }
+  return { ok: true, n: S.audit.length };
+}
+function commit(action, detail) { saveLocal(); if (action) audit(action, detail); scheduleRender(); }
+
+// ---------------- reference lists ----------------
+const L = {
+  types: ['Baseline OHA', 'Compliance verification', 'Targeted investigation'],
+  facilities: ['Process units', 'Laboratories', 'Workshops', 'Warehouses / chemical stores', 'Camps / accommodation', 'Offices / control rooms', 'Offshore platforms'],
+  workforce: ['Own staff', 'Contractors', 'Turnaround workforce'],
+  seasons: ['Summer', 'Winter'],
+  climate: ['Hot (Gulf / desert)', 'Temperate', 'Cold', 'Tropical humid'],
+  oelRule: ['Most protective of applicable limits', 'Legal limit first, then company, then advisory', 'Specified source priority'],
+  statTest: ['AIHA and EN 689 (both)', 'AIHA exposure categories', 'EN 689 compliance test'],
+  shiftModel: ['Brief & Scala', 'None (no adjustment)'],
+  zone: ['Non-hazardous', 'Zone 2', 'Zone 1', 'Zone 0'],
+  cls: ['Chemical', 'Physical', 'Biological', 'Ergonomic'],
+  subcat: ['Acute toxic gas', 'Chronic chemical', 'Particulate', 'Physical agent', 'Biological', 'Ergonomic'],
+  avg: ['TWA (full shift)', 'STEL (15 min)', 'Ceiling', 'Peak (logged)', 'Task'],
+  status: ['Binding (legal)', 'Company standard', 'Advisory'],
+  units: ['ppm', 'mg/m\u00B3', '\u00B5g/m\u00B3', 'f/cc', 'dB(A)', '\u00B0C WBGT', 'other'],
+  freq: ['Continuous', 'Daily', 'Weekly', 'Monthly', 'Turnaround / annual', 'Ad hoc'],
+  routine: ['Routine', 'Non-routine'],
+  sev: ['Low', 'Medium', 'High'],
+  open: ['Open', 'Closed'],
+  reqStatus: ['Requested', 'Received', 'Reviewed', 'Not available'],
+  segStatus: ['Draft', 'Approved', 'Under review', 'Split', 'Merged', 'Retired'],
+  conf: ['High', 'Medium', 'Low'],
+  basis: ['Measured data', 'Surrogate data', 'Modelling', 'Professional judgement'],
+  level: ['Elimination', 'Substitution', 'Engineering', 'Administrative', 'PPE / RPE'],
+  prio: ['1 Immediate', '2 High', '3 Medium', '4 Low'],
+  recStatus: ['Open', 'In progress', 'Closed', 'Rejected'],
+  cond: ['Normal', 'Upset', 'Reduced rate', 'Turnaround'],
+  exZone: ['Not Ex-certified', 'Zone 2', 'Zone 1', 'Zone 0'],
+  verified: ['Tested', 'Inspected only', 'Not verified'],
+  outcome: ['Acceptable', 'Acceptable with controls verified', 'Unacceptable: action required', 'No decision: more data needed'],
+  list: ['Act now', 'Sample', 'Confirm']
+};
+const opt = (col, f = 'name') => () => S[col].map(r => [r.id, r[f] || r.code || '(unnamed)']);
+const segOpt = () => S.segs.map(r => [r.id, (r.code ? r.code + ' ' : '') + (r.name || '')]);
+const profLabel = p => p ? `${nm('segs', p.segId, 'code') || nm('segs', p.segId)} \u00D7 ${nm('agents', p.agentId)} (${(p.avg || '').split(' ')[0]})` : '';
+const profOpt = () => S.profiles.map(p => [p.id, profLabel(p)]);
+
+// ---------------- schemas for table editors ----------------
+const C = {
+  datareq: [{ f: 'item', l: 'Document / data', w: 320 }, { f: 'status', l: 'Status', t: 'select', o: L.reqStatus }, { f: 'note', l: 'Notes', w: 220 }],
+  areas: [{ f: 'name', l: 'Area / unit', w: 180 }, { f: 'zone', l: 'Hazardous area', t: 'select', o: L.zone }, { f: 'process', l: 'Process description', w: 260 }, { f: 'pfd', l: 'PFD / drawing ref' }, { f: 'visited', l: 'Visited', t: 'check' }, { f: 'noVisit', l: 'Reason if not visited' }],
+  agents: [{ f: 'name', l: 'Agent', w: 170 }, { f: 'cas', l: 'CAS no.' }, { f: 'cls', l: 'Class', t: 'select', o: L.cls }, { f: 'subcat', l: 'Hazard sub-category', t: 'select', o: L.subcat, h: 'Sets the default averaging time for new exposure profiles' }, { f: 'mw', l: 'Mol. weight', t: 'num' }, { f: 'endpoints', l: 'Health effects / notations', w: 220 }, { f: 'stream', l: 'Stream conc. / source note', w: 180 }],
+  oels: [{ f: 'agentId', l: 'Agent', t: 'select', o: opt('agents') }, { f: 'source', l: 'Source', w: 150, h: 'e.g. ACGIH (licensed), OSHAD-SF, EU, EH40, company' }, { f: 'jur', l: 'Jurisdiction' }, { f: 'value', l: 'Value', t: 'num' }, { f: 'unit', l: 'Unit', t: 'select', o: L.units }, { f: 'avg', l: 'Averaging', t: 'select', o: L.avg }, { f: 'status', l: 'Legal status', t: 'select', o: L.status }, { f: 'effFrom', l: 'Effective from', t: 'date' }, { f: 'citation', l: 'Citation / edition', w: 180 }],
+  tasks: [{ f: 'name', l: 'Task', w: 200 }, { f: 'areaId', l: 'Area', t: 'select', o: opt('areas') }, { f: 'roles', l: 'Roles' }, { f: 'routine', l: 'Routine?', t: 'select', o: L.routine }, { f: 'freq', l: 'Frequency', t: 'select', o: L.freq }, { f: 'dur', l: 'Duration (min)', t: 'num' }, { f: 'planned', l: 'Planned date', t: 'date' }, { f: 'ppe', l: 'PPE / RPE worn' }, { f: 'controls', l: 'Controls in use' }],
+  screening: [{ f: 'date', l: 'Date', t: 'date' }, { f: 'areaId', l: 'Area', t: 'select', o: opt('areas') }, { f: 'agentId', l: 'Agent', t: 'select', o: opt('agents') }, { f: 'equipId', l: 'Instrument', t: 'select', o: opt('equipment', 'asset') }, { f: 'value', l: 'Reading', t: 'num' }, { f: 'unit', l: 'Unit', t: 'select', o: L.units }, { f: 'calOk', l: 'Bump / cal OK', t: 'check' }, { f: 'note', l: 'Location / note', w: 200 }],
+  concerns: [{ f: 'desc', l: 'Immediate concern', w: 300 }, { f: 'areaId', l: 'Area', t: 'select', o: opt('areas') }, { f: 'sev', l: 'Severity', t: 'select', o: L.sev }, { f: 'notified', l: 'Client notified', t: 'date' }, { f: 'status', l: 'Status', t: 'select', o: L.open }],
+  segs: [{ f: 'code', l: 'SEG ID' }, { f: 'name', l: 'Name', w: 170 }, { f: 'definition', l: 'Definition', t: 'area', w: 220 }, { f: 'criteria', l: 'Inclusion criteria', t: 'area', w: 180 }, { f: 'taskList', l: 'Tasks, frequency, duration', t: 'area', w: 220 }, { f: 'headOwn', l: 'Own staff', t: 'num' }, { f: 'headCon', l: 'Contractors', t: 'num' }, { f: 'shiftH', l: 'Shift length (h)', t: 'num' }, { f: 'rotation', l: 'Rotation / pattern' }, { f: 'rationale', l: 'Grouping rationale', t: 'area', w: 220 }, { f: 'status', l: 'Status', t: 'select', o: L.segStatus }],
+  rating: [{ f: 'segId', l: 'SEG', t: 'select', o: segOpt }, { f: 'agentId', l: 'Agent', t: 'select', o: opt('agents') }, { f: 'avg', l: 'Averaging', t: 'select', o: L.avg }, { f: 'scenario', l: 'Scenario', t: 'select', o: L.routine }, { f: 'erc', l: 'Exposure rating 0\u20134', t: 'select', o: ['0', '1', '2', '3', '4'] }, { f: 'her', l: 'Health effect 1\u20134', t: 'select', o: ['1', '2', '3', '4'] }, { f: 'conf', l: 'Confidence', t: 'select', o: L.conf }, { f: 'basis', l: 'Basis', t: 'select', o: L.basis }, { f: 'rationale', l: 'Rationale', t: 'area', w: 240 }, { f: 'actNow', l: 'Act now', t: 'check' }, { f: '_list', l: 'Suggested list', calc: p => listPill(p) }],
+  plan: [{ f: '_p', l: 'Exposure profile', calc: p => esc(profLabel(p)) }, { f: 'method', l: 'Method', w: 160, h: 'e.g. NIOSH 1501, ISO 9612' }, { f: 'nReq', l: 'n required', t: 'num' }, { f: 'timing', l: 'Timing / season / tasks', w: 200 }, { f: 'oelId', l: 'Pinned OEL (optional)', t: 'select', o: p => S.oels.filter(o => o.agentId === p.agentId).map(o => [o.id, `${o.source} ${F(o.value)} ${o.unit} ${o.avg || ''}`]) }, { f: 'oelReason', l: 'Reason for pinned OEL' }, { f: 'surveillance', l: 'Health surveillance link', w: 170 }],
+  equipment: [{ f: 'asset', l: 'Asset ID' }, { f: 'type', l: 'Type', w: 150 }, { f: 'exZone', l: 'Ex rating (lowest zone)', t: 'select', o: L.exZone }, { f: 'exCert', l: 'Ex certificate / gas group / T-class', w: 200 }, { f: 'calDue', l: 'Calibration due', t: 'date' }],
+  labs: [{ f: 'name', l: 'Laboratory', w: 180 }, { f: 'accred', l: 'Accreditation no.' }, { f: 'scope', l: 'Scope (methods)', w: 200 }, { f: 'expiry', l: 'Certificate expiry', t: 'date' }],
+  samples: [{ f: 'coc', l: 'Sample / COC ID' }, { f: 'date', l: 'Date', t: 'date' }, { f: 'worker', l: 'Worker (pseudonym)' }, { f: 'areaId', l: 'Area', t: 'select', o: opt('areas') }, { f: 'task', l: 'Tasks during sample', w: 160 }, { f: 'durMin', l: 'Duration (min)', t: 'num' }, { f: 'flowPre', l: 'Flow pre (L/min)', t: 'num' }, { f: 'flowPost', l: 'Flow post (L/min)', t: 'num' }, { f: 'value', l: 'Result', t: 'num', h: 'For a non-detect, enter the LOD in this column and tick ND' }, { f: 'nd', l: 'ND (<LOD)', t: 'check' }, { f: 'equipId', l: 'Equipment', t: 'select', o: opt('equipment', 'asset') }, { f: 'labId', l: 'Lab', t: 'select', o: opt('labs') }, { f: 'logger', l: 'Datalog verified', t: 'check', h: 'Required for acute toxic gas monitors used as exposure data' }, { f: 'rpe', l: 'RPE worn' }, { f: 'cond', l: 'Process condition', t: 'select', o: L.cond }, { f: 'blank', l: 'Field blank', t: 'check' }, { f: 'excluded', l: 'Exclude', t: 'check' }, { f: 'exclReason', l: 'Exclusion reason', w: 160 }],
+  controls: [{ f: 'desc', l: 'Control', w: 240 }, { f: 'level', l: 'Hierarchy level', t: 'select', o: L.level }, { f: 'areaId', l: 'Area', t: 'select', o: opt('areas') }, { f: 'agentId', l: 'Agent', t: 'select', o: opt('agents') }, { f: 'evidence', l: 'Effectiveness evidence', w: 200 }, { f: 'testDate', l: 'Test date', t: 'date' }, { f: 'verified', l: 'Verification', t: 'select', o: L.verified }],
+  recs: [{ f: 'statement', l: 'Recommendation (specific, verifiable)', t: 'area', w: 280 }, { f: 'level', l: 'Hierarchy', t: 'select', o: L.level }, { f: 'profileId', l: 'Linked profile', t: 'select', o: profOpt }, { f: 'priority', l: 'Priority', t: 'select', o: L.prio }, { f: 'rationale', l: 'Rationale (data / observation)', t: 'area', w: 220 }, { f: 'owner', l: 'Owner' }, { f: 'due', l: 'Due', t: 'date' }, { f: 'verify', l: 'Verification method' }, { f: 'status', l: 'Status', t: 'select', o: L.recStatus }],
+  rpe: [{ f: '_p', l: 'Exposure profile', calc: p => esc(profLabel(p)) }, { f: '_x', l: 'X95 UCL', calc: p => { const a = analyseProfile(p); return a.stats && a.stats.x95ucl ? F(a.stats.x95ucl) + ' ' + esc(a.unit) : '\u2013'; } }, { f: '_o', l: 'OEL (adj.)', calc: p => { const a = analyseProfile(p); return a.oelAdj ? F(a.oelAdj) + ' ' + esc(a.unit) : '\u2013'; } }, { f: '_r', l: 'Required PF', calc: p => { const a = analyseProfile(p); return a.stats && a.stats.x95ucl && a.oelAdj ? F(a.stats.x95ucl / a.oelAdj, 2) : '\u2013'; } }, { f: 'rpeType', l: 'RPE in use', w: 160 }, { f: 'rpeApf', l: 'Assigned PF', t: 'num' }, { f: '_v', l: 'Adequacy', calc: p => rpeVerdict(p) }, { f: 'reassessMonths', l: 'Reassess (months)', t: 'num', h: 'Leave blank to use the default from the final category' }],
+  moc: [{ f: 'date', l: 'Date', t: 'date' }, { f: 'ref', l: 'MOC ref' }, { f: 'desc', l: 'Change', w: 260 }, { f: 'agentId', l: 'Agent affected', t: 'select', o: opt('agents') }, { f: 'segId', l: 'SEG affected', t: 'select', o: segOpt }, { f: 'status', l: 'Status', t: 'select', o: L.open }]
+};
+
+// ---------------- generic table editor ----------------
+function tableEditor(col, cols, o = {}) {
+  const rows = S[col].filter(o.filter || (() => true));
+  const ro = o.readonly;
+  let h = `<div class="tw" data-tw="${col}${o.key || ''}"><table class="grid"><thead><tr>${cols.map(c => `<th${c.h ? ` title="${esc(c.h)}"` : ''}>${esc(c.l)}${c.h ? ' \u24D8' : ''}</th>`).join('')}${ro || o.noDelete ? '' : '<th class="act"><span class="sr">Delete</span></th>'}</tr></thead><tbody>`;
+  if (!rows.length) h += `<tr><td class="empty" colspan="${cols.length + 1}">${esc(o.empty || 'Nothing here yet. Add the first row.')}</td></tr>`;
+  for (const r of rows) {
+    h += '<tr>' + cols.map(c => `<td style="${c.w ? `min-width:${c.w}px` : ''}">${cell(col, r, c, ro)}</td>`).join('');
+    if (!ro && !o.noDelete) h += `<td class="act"><button class="icon" data-act="del" data-col="${col}" data-id="${r.id}" aria-label="Delete row">\u00D7</button></td>`;
+    h += '</tr>';
+  }
+  h += '</tbody></table></div>';
+  if (!ro && !o.noAdd) h += `<button class="btn ghost" data-act="add" data-col="${col}" data-def="${esc(JSON.stringify(o.defaults || {}))}">${esc(o.addLabel || 'Add row')}</button>`;
+  return h;
+}
+function cell(col, r, c, ro) {
+  if (c.calc) return `<span class="calc">${c.calc(r)}</span>`;
+  const v = r[c.f], key = `${col}|${r.id}|${c.f}`;
+  const a = `data-col="${col}" data-id="${r.id}" data-f="${c.f}" data-t="${c.t || 'text'}" data-key="${esc(key)}" aria-label="${esc(c.l)}"${ro ? ' disabled' : ''}`;
+  switch (c.t) {
+    case 'select': { const os = typeof c.o === 'function' ? c.o(r) : c.o; return `<select ${a}><option value=""></option>${os.map(x => { const [val, lab] = Array.isArray(x) ? x : [x, x]; return `<option value="${esc(val)}"${String(v ?? '') === String(val) ? ' selected' : ''}>${esc(lab)}</option>`; }).join('')}</select>`; }
+    case 'check': return `<input type="checkbox" ${a}${v ? ' checked' : ''}>`;
+    case 'num': return `<input type="number" step="any" ${a} value="${v ?? ''}">`;
+    case 'date': return `<input type="date" ${a} value="${esc(v || '')}">`;
+    case 'area': return `<textarea rows="2" ${a}>${esc(v || '')}</textarea>`;
+    default: return `<input type="text" ${a} value="${esc(v ?? '')}">`;
+  }
+}
+function field(path, label, t = 'text', o = {}) {
+  const v = getPath(S, path), dis = o.disabled ? ' disabled' : '', key = 'obj|' + path;
+  const a = `id="f_${path.replace(/\./g, '_')}" data-obj="${path}" data-t="${t}" data-key="${key}"${dis}`;
+  let inp;
+  if (t === 'select') inp = `<select ${a}>${o.o.map(x => `<option${String(v) === String(x) ? ' selected' : ''}>${esc(x)}</option>`).join('')}</select>`;
+  else if (t === 'area') inp = `<textarea ${a} rows="${o.rows || 3}">${esc(v || '')}</textarea>`;
+  else inp = `<input type="${t === 'num' ? 'number' : t}" step="any" ${a} value="${esc(v ?? '')}">`;
+  return `<div class="field"${o.span ? ` style="grid-column:span ${o.span}"` : ''}><label for="f_${path.replace(/\./g, '_')}">${esc(label)}</label>${inp}${o.hint ? `<span class="hint" style="margin:0">${esc(o.hint)}</span>` : ''}</div>`;
+}
+function checks(path, list, dis) {
+  const v = getPath(S, path) || [];
+  return `<div class="checks">${list.map(x => `<label><input type="checkbox" data-arr="${path}" value="${esc(x)}"${v.includes(x) ? ' checked' : ''}${dis ? ' disabled' : ''}>${esc(x)}</label>`).join('')}</div>`;
+}
+function readVal(el) {
+  if (el.type === 'checkbox') return el.checked;
+  if (el.dataset.t === 'num') return el.value === '' ? null : Number(el.value);
+  return el.value;
+}
+
+// ---------------- derived logic ----------------
+function defaultAvg(agentId) { const a = byId('agents', agentId); return a && a.subcat === 'Acute toxic gas' ? 'STEL (15 min)' : 'TWA (full shift)'; }
+function isTWA(avg) { return /^TWA/.test(avg || ''); }
+function avgMatches(oelAvg, pAvg) {
+  if (!oelAvg || !pAvg) return true;
+  if (isTWA(pAvg)) return isTWA(oelAvg);
+  if (/^STEL|^Peak|^Task/.test(pAvg)) return /^STEL|^Ceiling/.test(oelAvg);
+  if (/^Ceiling/.test(pAvg)) return /^Ceiling/.test(oelAvg);
+  return true;
+}
+function selectOEL(p) {
+  if (p.oelId) { const o = byId('oels', p.oelId); if (o) return { oel: o, why: 'Pinned by hygienist' + (p.oelReason ? ': ' + p.oelReason : ' (no reason recorded)') }; }
+  const cands = S.oels.filter(o => o.agentId === p.agentId && o.value > 0 && avgMatches(o.avg, p.avg));
+  if (!cands.length) return { oel: null, why: 'No matching OEL in library' };
+  const unit = cands[0].unit, same = cands.filter(o => o.unit === unit);
+  const rule = S.decision.oelRule;
+  let pick;
+  if (rule.startsWith('Legal')) {
+    const rank = { 'Binding (legal)': 0, 'Company standard': 1, 'Advisory': 2 };
+    pick = same.slice().sort((a, b) => (rank[a.status] ?? 3) - (rank[b.status] ?? 3) || a.value - b.value)[0];
+  } else if (rule.startsWith('Specified')) {
+    const pr = (S.decision.sources || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+    const rk = o => { const i = pr.findIndex(s => (o.source || '').toLowerCase().includes(s)); return i < 0 ? 99 : i; };
+    pick = same.slice().sort((a, b) => rk(a) - rk(b) || a.value - b.value)[0];
+  } else pick = same.slice().sort((a, b) => a.value - b.value)[0];
+  const mixed = cands.length > same.length ? ' (other limits in different units not compared)' : '';
+  return { oel: pick, why: rule + mixed };
+}
+const anaCache = new Map();
+function analyseProfile(p) {
+  const sel = selectOEL(p), seg = byId('segs', p.segId);
+  const smp = S.samples.filter(s => s.profileId === p.id && !s.blank && !s.excluded && s.value > 0);
+  const key = JSON.stringify([smp.map(s => [s.value, !!s.nd]), sel.oel && sel.oel.value, seg && seg.shiftH, p.avg, S.decision]);
+  if (anaCache.has(p.id) && anaCache.get(p.id).key === key) return anaCache.get(p.id).res;
+  let rf = 1, rfNote = 'No adjustment';
+  if (sel.oel && isTWA(p.avg) && S.decision.shiftModel === 'Brief & Scala' && seg && seg.shiftH > 8) { rf = OHStats.briefScala(seg.shiftH); rfNote = `Brief & Scala, ${seg.shiftH} h shift: RF = ${F(rf)}`; }
+  const oelAdj = sel.oel ? sel.oel.value * rf : null;
+  const stats = OHStats.analyse(smp.map(s => ({ v: s.value, nd: !!s.nd })), oelAdj, { confAIHA: S.decision.confAIHA, confEN: S.decision.confEN });
+  const res = { sel, rf, rfNote, oelAdj, unit: sel.oel ? sel.oel.unit : '', stats, n: smp.length };
+  anaCache.set(p.id, { key, res });
+  return res;
+}
+function suggestedList(p) {
+  const erc = Number(p.erc), her = Number(p.her);
+  if (p.actNow) return 'Act now';
+  if (p.erc === undefined || p.erc === '' || p.erc === null) return '';
+  if (erc >= 3 || (her >= 3 && (erc >= 2 || p.conf === 'Low'))) return 'Sample';
+  if (erc <= 1 && p.conf !== 'Low') return 'Confirm';
+  return 'Sample';
+}
+function listPill(p) { const l = suggestedList(p); return l ? `<span class="pill ${l === 'Act now' ? 'crit' : l === 'Sample' ? 'warn' : 'ok'}">${l}</span>` : '<span class="pill none">Not rated</span>'; }
+function riskBand(p) { const s = Number(p.erc) * Number(p.her); if (isNaN(s) || p.erc === '' || p.her === '' || p.erc == null || p.her == null) return null; return s >= 12 ? ['High', 'crit'] : s >= 6 ? ['Medium', 'warn'] : s >= 3 ? ['Low', 'info'] : ['Very low', 'ok']; }
+function rpeVerdict(p) {
+  const a = analyseProfile(p); if (!(a.stats && a.stats.x95ucl && a.oelAdj)) return '<span class="pill none">Needs data</span>';
+  const req = a.stats.x95ucl / a.oelAdj; if (req <= 1) return '<span class="pill ok">RPE not required by data</span>';
+  if (!p.rpeApf) return '<span class="pill warn">Enter APF</span>';
+  return p.rpeApf >= req ? '<span class="pill ok">Adequate</span>' : '<span class="pill crit">Inadequate</span>';
+}
+function reassessMonths(p) { if (p.reassessMonths) return p.reassessMonths; const c = Number(p.decCat); if (p.decCat === undefined || p.decCat === '' || p.decCat == null) return null; return c >= 3 ? 12 : c === 2 ? 24 : 36; }
+function mocReview(p) { return S.moc.filter(m => m.status !== 'Closed' && ((m.agentId && m.agentId === p.agentId) || (m.segId && m.segId === p.segId))); }
+
+// ---------------- QA / validation ----------------
+function qaFlags() {
+  const F2 = [], add = (sev, where, msg, key) => F2.push({ sev, where, msg, key: key || (where + '|' + msg) });
+  const e = S.engagement, d = S.decision;
+  if (!e.client || !e.site) add('Flag', 'Engagement', 'Client and site are not both recorded.');
+  if (!d.locked) add('Flag', 'Decision standard', 'Decision standard is not locked. Agree it with the client and lock it before fieldwork.');
+  if (e.type === 'Baseline OHA' && !(e.workforce || []).includes('Contractors')) add('Flag', 'Scope', 'Contractors excluded from a baseline assessment. This will be listed as a limitation.');
+  if (e.climate.startsWith('Hot') && !(e.seasons || []).includes('Summer')) add('Flag', 'Scope', 'Hot climate but summer not in scope: heat and volatile-agent exposures likely underestimated.');
+  if (e.type === 'Targeted investigation' && !e.trigger) add('Flag', 'Engagement', 'Targeted investigation has no trigger recorded.');
+  S.areas.forEach(a => { if (!a.visited && !a.noVisit) add('Info', 'Area ' + (a.name || '?'), 'Not marked visited and no reason recorded.'); });
+  S.concerns.forEach(c => { if (c.status !== 'Closed') add('Flag', 'Immediate concern', (c.desc || '').slice(0, 80) + ' is still open.', 'concern|' + c.id); });
+  S.screening.forEach(r => { if (!r.calOk) add('Flag', 'Screening', `Reading on ${r.date || '?'} (${nm('agents', r.agentId) || 'agent?'}) has no bump test / calibration confirmation.`, 'scr|' + r.id); });
+  if (e.type === 'Baseline OHA' && S.segs.length && !S.segs.some(s => Number(s.headCon) > 0)) add('Flag', 'SEGs', 'No SEG includes contractors. Turnaround and contractor groups are usually the most exposed.');
+  S.segs.forEach(s => {
+    const miss = [['definition', 'definition'], ['rationale', 'rationale'], ['shiftH', 'shift length']].filter(([f]) => !s[f]).map(x => x[1]);
+    if (miss.length) add('Flag', 'SEG ' + (s.code || s.name || '?'), 'Missing ' + miss.join(', ') + '.', 'seg|' + s.id + '|miss');
+    if (s.status !== 'Approved' && s.status !== 'Retired') add('Info', 'SEG ' + (s.code || s.name || '?'), 'Not yet approved by the principal hygienist.', 'seg|' + s.id + '|appr');
+  });
+  const smpAll = S.samples;
+  S.profiles.forEach(p => {
+    const lab = profLabel(p);
+    if (p.erc === undefined || p.erc === '' || p.erc == null) add('Info', lab, 'Not yet rated in OHRA.', 'p|' + p.id + '|rate');
+    else if (!p.rationale) add('Flag', lab, 'Rating has no rationale.', 'p|' + p.id + '|rat');
+    const a = analyseProfile(p);
+    if (a.n > 0 && !a.sel.oel) add('Flag', lab, 'Results entered but no OEL found for this averaging time.', 'p|' + p.id + '|oel');
+    if (a.n > 0 && a.n < (d.minN || 6)) add('Flag', lab, `Only ${a.n} valid results (minimum ${d.minN || 6} for a statistical decision).`, 'p|' + p.id + '|n');
+    (a.stats.flags || []).forEach(m => add('Flag', lab, m, 'p|' + p.id + '|' + m));
+    if (p.oelId && !p.oelReason) add('Flag', lab, 'OEL pinned without a recorded reason.', 'p|' + p.id + '|pin');
+    if (p.decCat !== undefined && p.decCat !== '' && p.decCat !== null) {
+      if (!p.decRationale) add('Flag', lab, 'Final decision has no rationale.', 'p|' + p.id + '|drat');
+      if (Number(p.decCat) >= 3) {
+        const recs = S.recs.filter(r => r.profileId === p.id);
+        if (!recs.length) add('Flag', lab, 'Category 3\u20134 with no linked recommendation.', 'p|' + p.id + '|norec');
+        else if (recs.every(r => r.level === 'PPE / RPE')) add('Flag', lab, 'Category 3\u20134 with PPE-only recommendations: record why source controls are not proposed.', 'p|' + p.id + '|ppe');
+      }
+    }
+    if (mocReview(p).length) add('Flag', lab, 'Open MOC affects this profile: review required.', 'p|' + p.id + '|moc');
+  });
+  smpAll.forEach(s => {
+    const p = byId('profiles', s.profileId), lab = 'Sample ' + (s.coc || '(no ID)');
+    if (s.nd && !(s.value > 0)) add('Block', lab, 'Non-detect without an LOD value.', 'b|' + s.id + '|lod');
+    if (s.flowPre > 0 && s.flowPost > 0 && Math.abs(s.flowPost - s.flowPre) / s.flowPre > 0.05) add('Flag', lab, `Flow drift ${F(100 * Math.abs(s.flowPost - s.flowPre) / s.flowPre, 2)}% exceeds 5%. Exclude or justify.`, 's|' + s.id + '|flow');
+    const eq = byId('equipment', s.equipId);
+    if (eq && eq.calDue && s.date && eq.calDue < s.date) add('Block', lab, `Equipment ${eq.asset} was past calibration due date (${eq.calDue}).`, 'b|' + s.id + '|cal');
+    const ar = byId('areas', s.areaId);
+    if (eq && ar && ar.zone && ar.zone !== 'Non-hazardous') {
+      const rank = { 'Not Ex-certified': 9, 'Zone 2': 2, 'Zone 1': 1, 'Zone 0': 0 }, need = { 'Zone 2': 2, 'Zone 1': 1, 'Zone 0': 0 }[ar.zone];
+      if ((rank[eq.exZone] ?? 9) > need) add('Block', lab, `Equipment ${eq.asset} (${eq.exZone || 'no Ex rating'}) is not certified for ${ar.zone} in ${ar.name}.`, 'b|' + s.id + '|ex');
+    }
+    const lb = byId('labs', s.labId);
+    if (lb && lb.expiry && s.date && lb.expiry < s.date) add('Flag', lab, `Laboratory ${lb.name} accreditation had expired (${lb.expiry}).`, 's|' + s.id + '|lab');
+    if (!s.blank) {
+      if (!s.task || !s.rpe || !s.cond) add('Flag', lab, 'Missing context (tasks, RPE or process condition).', 's|' + s.id + '|ctx');
+      if (p && s.excluded && !s.exclReason) add('Flag', lab, 'Excluded without a reason.', 's|' + s.id + '|excl');
+      if (p && p.scenario !== 'Non-routine' && (s.cond === 'Upset' || s.cond === 'Turnaround')) add('Flag', lab, `Taken during ${s.cond.toLowerCase()} but used in a routine profile.`, 's|' + s.id + '|rep');
+      const ag = p && byId('agents', p.agentId), seg = p && byId('segs', p.segId);
+      if (ag && ag.subcat === 'Acute toxic gas' && !s.logger) add('Block', lab, 'Acute toxic gas result without verified datalogging cannot be used as exposure data.', 'b|' + s.id + '|log');
+      if (p && isTWA(p.avg) && seg && seg.shiftH && s.durMin && s.durMin < 0.7 * seg.shiftH * 60) add('Flag', lab, `Duration ${s.durMin} min is under 70% of the ${seg.shiftH} h shift.`, 's|' + s.id + '|dur');
+    } else if (!s.nd) add('Flag', lab, 'Field blank above LOD: check the whole batch.', 's|' + s.id + '|blank');
+  });
+  const nb = smpAll.filter(s => s.blank).length, nr = smpAll.length - nb;
+  if (nr >= 5 && (nb < 2 || nb < 0.1 * nr)) add('Flag', 'Field QA', `${nb} field blanks for ${nr} samples (target 10%, at least 2).`, 'qa|blanks');
+  return F2;
+}
+
+// ---------------- render ----------------
+const TABS = [
+  { id: 'engagement', n: 0, t: 'Engagement', s: 'Scope and decision standard' },
+  { id: 'ohid', n: 1, t: 'OHID', s: 'Areas, agents, tasks' },
+  { id: 'segs', n: 2, t: 'SEGs', s: 'Similar exposure groups' },
+  { id: 'ohra', n: 3, t: 'OHRA', s: 'Ratings and priorities' },
+  { id: 'exposure', n: 4, t: 'Exposure', s: 'Samples and statistics' },
+  { id: 'controls', n: 5, t: 'Controls', s: 'Recommendations, MOC' },
+  { id: 'report', n: 6, t: 'Report', s: 'Generate and sign' }
+];
+function progress(id) {
+  switch (id) {
+    case 'engagement': return S.decision.locked && S.engagement.client ? 2 : (S.engagement.client || S.engagement.site) ? 1 : 0;
+    case 'ohid': return S.areas.length && S.agents.length && S.tasks.length ? 2 : (S.areas.length || S.agents.length) ? 1 : 0;
+    case 'segs': return S.segs.length && S.segs.every(s => s.status === 'Approved' || s.status === 'Retired') ? 2 : S.segs.length ? 1 : 0;
+    case 'ohra': return S.profiles.length && S.profiles.every(p => p.erc !== undefined && p.erc !== '' && p.erc != null) ? 2 : S.profiles.length ? 1 : 0;
+    case 'exposure': return S.profiles.length && S.profiles.every(p => p.decCat !== undefined && p.decCat !== '' && p.decCat != null) ? 2 : S.samples.length ? 1 : 0;
+    case 'controls': return S.recs.length && S.handover.date ? 2 : (S.recs.length || S.controls.length) ? 1 : 0;
+    case 'report': return S.signoff ? 2 : S.report.summary ? 1 : 0;
+  }
+  return 0;
+}
+function renderRail() {
+  const flags = qaFlags(), blocks = flags.filter(f => f.sev === 'Block').length, open = flags.filter(f => f.sev === 'Flag' && !S.qaAck[f.key]).length;
+  $('#rail').innerHTML = `<ol class="train">${TABS.map(t => { const pr = progress(t.id); return `<li class="step"><button data-act="tab" data-tab="${t.id}"${UI.tab === t.id ? ' aria-current="page"' : ''}><span class="dot ${pr === 2 ? 'done' : pr === 1 ? 'started' : ''}" aria-hidden="true">${t.n}</span><span class="lbl"><b>${t.t}</b><span>${t.s}</span></span></button></li>`; }).join('')}</ol>
+  <div class="rail-sep"></div>
+  <div class="rail-links">
+    <button data-act="tab" data-tab="home"${UI.tab === 'home' ? ' aria-current="page"' : ''}>Overview</button>
+    <button data-act="tab" data-tab="qa"${UI.tab === 'qa' ? ' aria-current="page"' : ''}>QA checks <span>${blocks ? `<span class="badge crit" title="Blocking">${blocks}</span> ` : ''}${open ? `<span class="badge warn" title="Open flags">${open}</span>` : (!blocks ? '<span class="badge ok">0</span>' : '')}</span></button>
+    <button data-act="tab" data-tab="settings"${UI.tab === 'settings' ? ' aria-current="page"' : ''}>Settings and audit</button>
+  </div>`;
+  const e = S.engagement;
+  $('#engTitle').innerHTML = e.client || e.site ? `<b>${esc(e.site || 'Site not set')}</b> \u2014 ${esc(e.client || 'client not set')} \u2014 ${esc(e.type)}` : 'New engagement';
+}
+let rTimer = null;
+function scheduleRender() { clearTimeout(rTimer); rTimer = setTimeout(render, 0); }
+function render() {
+  const main = $('#main'), ae = document.activeElement, k = ae && ae.dataset ? ae.dataset.key : null;
+  const st = main.scrollTop, tw = {}; document.querySelectorAll('.tw').forEach(t => tw[t.dataset.tw] = t.scrollLeft);
+  renderRail();
+  main.innerHTML = (VIEWS[UI.tab] || VIEWS.home)();
+  main.scrollTop = st; document.querySelectorAll('.tw').forEach(t => { if (tw[t.dataset.tw]) t.scrollLeft = tw[t.dataset.tw]; });
+  if (k) { const el = main.querySelector(`[data-key="${CSS.escape(k)}"]`); if (el) el.focus({ preventScroll: true }); }
+  if (UI.tab === 'report' && UI.reportHtml) { const fr = $('#repFrame'); if (fr) fr.srcdoc = UI.reportHtml; }
+}
+const head = (t, p, right = '') => `<div class="page-head"><div><h1>${t}</h1>${p ? `<p>${p}</p>` : ''}</div>${right}</div>`;
+
+const VIEWS = {
+  home() {
+    const e = S.engagement, flags = qaFlags(), blocks = flags.filter(f => f.sev === 'Block').length, open = flags.filter(f => f.sev === 'Flag' && !S.qaAck[f.key]).length;
+    if (!e.client && !e.site && !S.areas.length && !S.profiles.length) {
+      return `<div class="landing">${head('Plan, measure and report an occupational hygiene assessment', 'Everything stays in this browser and in the engagement file you save. Nothing is sent to a server unless you switch on AI drafting.')}
+      <div class="sec"><h2>How an engagement runs here</h2>
+      <ol><li><b>Engagement</b>: scope, workforce, seasons, and the decision standard you lock with the client.</li>
+      <li><b>OHID</b>: areas, agents with their OELs, tasks, screening readings, immediate concerns.</li>
+      <li><b>SEGs</b>: group workers by process, task, agent and environment, then approve.</li>
+      <li><b>OHRA</b>: rate each SEG \u00D7 agent profile and get a sampling priority list.</li>
+      <li><b>Exposure</b>: enter results; the app runs AIHA and EN 689 statistics with ROS for non-detects.</li>
+      <li><b>Controls</b>: evaluate controls, RPE adequacy, recommendations, MOC and handover.</li>
+      <li><b>Report</b>: generate the report, clear QA checks, sign and issue.</li></ol>
+      <div class="btn-row"><button class="btn primary" data-act="tab" data-tab="engagement">Start a new engagement</button><button class="btn" data-act="demo">Load the sour gas demo</button><button class="btn" data-act="openFile">Open an engagement file</button></div></div>
+      <p class="hint">OEL values are not supplied with the app. Enter limits from sources you are licensed to use, with their citations.</p></div>`;
+    }
+    const cats = [0, 1, 2, 3, 4].map(c => S.profiles.filter(p => String(p.decCat) === String(c)).length);
+    const lists = { 'Act now': 0, 'Sample': 0, 'Confirm': 0 }; S.profiles.forEach(p => { const l = suggestedList(p); if (l) lists[l]++; });
+    return head('Overview', `${esc(e.type)} at ${esc(e.site || 'site not set')} for ${esc(e.client || 'client not set')}.`) +
+      `<div class="sec"><div class="metrics">
+        <div class="metric"><b>${S.segs.length}</b><span>SEGs (${S.segs.filter(s => s.status === 'Approved').length} approved)</span></div>
+        <div class="metric"><b>${S.profiles.length}</b><span>Exposure profiles</span></div>
+        <div class="metric"><b>${S.samples.filter(s => !s.blank).length}</b><span>Samples (${S.samples.filter(s => s.blank).length} blanks)</span></div>
+        <div class="metric"><b>${S.recs.filter(r => r.status !== 'Closed' && r.status !== 'Rejected').length}</b><span>Open recommendations</span></div>
+        <div class="metric"><b style="color:${blocks ? 'var(--crit)' : open ? 'var(--warn)' : 'var(--ok)'}">${blocks + open}</b><span>QA items to clear</span></div>
+      </div></div>
+      <div class="cols">
+      <div class="sec"><h2>Final exposure categories</h2><p class="hint">Decided by the hygienist in the Exposure step.</p>
+        <div class="heat">${cats.map((n, c) => `<div class="cat${c}"><b>${n}</b>Category ${c}</div>`).join('')}</div></div>
+      <div class="sec"><h2>Suggested work lists</h2><p class="hint">From OHRA ratings; the order is a suggestion, not a decision.</p>
+        <table class="kv"><tr><th><span class="pill crit">Act now</span></th><td>${lists['Act now']} profiles</td></tr><tr><th><span class="pill warn">Sample</span></th><td>${lists['Sample']} profiles</td></tr><tr><th><span class="pill ok">Confirm</span></th><td>${lists['Confirm']} profiles</td></tr></table></div>
+      </div>
+      <div class="sec"><h2>Next steps</h2>${nextSteps()}</div>`;
+  },
+  engagement() {
+    const L2 = S.decision.locked, e = S.engagement;
+    return head('Engagement setup', 'Agree scope and the decision standard in writing before fieldwork. The decision standard locks once approved.') +
+      `<div class="sec"><h2>Engagement</h2><div class="cols">
+        ${field('engagement.client', 'Client')}${field('engagement.site', 'Site')}${field('engagement.country', 'Country / jurisdiction')}
+        ${field('engagement.type', 'Engagement type', 'select', { o: L.types })}
+        ${e.type === 'Targeted investigation' ? field('engagement.trigger', 'Trigger (complaint, health finding, incident ref.)') : ''}
+        ${field('engagement.start', 'Fieldwork start', 'date')}${field('engagement.end', 'Fieldwork end', 'date')}
+        ${field('engagement.consultant', 'Lead consultant')}${field('engagement.principal', 'Principal / reviewing hygienist')}
+        ${field('engagement.climate', 'Climate', 'select', { o: L.climate })}
+      </div></div>
+      <div class="sec"><h2>Scope</h2><p class="hint">Exclusions appear in the report as limitations.</p>
+        <h3>Facilities</h3>${checks('engagement.facilities', L.facilities)}
+        <h3>Workforce</h3>${checks('engagement.workforce', L.workforce)}
+        <h3>Seasons</h3>${checks('engagement.seasons', L.seasons)}
+        <div class="cols">${field('engagement.exclusions', 'Exclusions and justification', 'area', { span: 2 })}</div></div>
+      <div class="sec"><h2>Decision standard</h2>
+        ${L2 ? `<div class="callout">Locked by ${esc(S.decision.lockedBy)} on ${esc(S.decision.lockedAt.slice(0, 10))}. Changes need a recorded reason.</div>` : '<p class="hint">Choose how OELs are selected and which statistical test decides acceptability, then lock it.</p>'}
+        <div class="cols">
+        ${field('decision.oelRule', 'OEL selection rule', 'select', { o: L.oelRule, disabled: L2 })}
+        ${S.decision.oelRule.startsWith('Specified') ? field('decision.sources', 'Source priority (comma-separated)', 'text', { disabled: L2, hint: 'e.g. OSHAD-SF, Company, ACGIH' }) : ''}
+        ${field('decision.statTest', 'Statistical decision', 'select', { o: L.statTest, disabled: L2 })}
+        ${field('decision.confAIHA', 'AIHA confidence level', 'num', { disabled: L2, hint: 'Default 0.95' })}
+        ${field('decision.confEN', 'EN 689 confidence level', 'num', { disabled: L2, hint: 'EN 689 uses 0.70' })}
+        ${field('decision.shiftModel', 'Shift adjustment model', 'select', { o: L.shiftModel, disabled: L2 })}
+        ${field('decision.minN', 'Minimum samples per profile', 'num', { disabled: L2 })}
+        </div>
+        <div class="btn-row" style="margin-top:12px">${L2 ? '<button class="btn" data-act="unlockStd">Unlock with reason</button>' : '<button class="btn primary" data-act="lockStd">Lock decision standard</button>'}</div></div>
+      <div class="sec"><h2>Data request register</h2><p class="hint">Track what the client has supplied before mobilising.</p>
+        ${tableEditor('datareq', C.datareq, { defaults: { status: 'Requested' }, addLabel: 'Add item' })}
+        <div class="btn-row" style="margin-top:8px"><button class="btn" data-act="loadReq">Add sour gas plant request list</button></div></div>
+      <div class="sec"><h2>Kick-off meeting</h2><div class="cols">
+        ${field('kickoff.date', 'Date', 'date')}${field('kickoff.attendees', 'Attendees', 'area')}${field('kickoff.access', 'Access, permits and escort arrangements', 'area')}${field('kickoff.h2s', 'H\u2082S safety protocol agreed', 'area')}${field('kickoff.notes', 'Other notes', 'area')}</div>
+        <h3>Non-routine tasks expected during the survey</h3><p class="hint">These become non-routine tasks in OHID and drive sampling timing.</p>
+        ${tableEditor('tasks', C.tasks, { filter: t => t.fromKickoff, key: 'ko', defaults: { routine: 'Non-routine', fromKickoff: true, freq: 'Turnaround / annual' }, addLabel: 'Add non-routine task' })}</div>`;
+  },
+  ohid() {
+    return head('OHID: initial diagnostic', 'Build the area, source, agent and task map. Stream data and the chemical inventory predict most of the chemical exposure picture before the walk-through.') +
+      `<div class="sec"><h2>Areas and units</h2>${tableEditor('areas', C.areas, { addLabel: 'Add area' })}</div>
+      <div class="sec"><h2>Agents</h2><p class="hint">The hazard sub-category sets default averaging times: peak/STEL for acute toxic gases, full-shift TWA for chronic chemicals and particulates.</p>
+        ${tableEditor('agents', C.agents, { addLabel: 'Add agent', defaults: { cls: 'Chemical' } })}
+        <div class="btn-row" style="margin-top:8px"><button class="btn" data-act="loadHaz">Add sour gas hazard library</button></div></div>
+      <div class="sec"><h2>OEL library for this engagement</h2><p class="hint">Enter each limit from its source with citation and edition. Licensed limits (e.g. ACGIH TLVs) are entered by the firm and are not distributed with the app.</p>
+        ${tableEditor('oels', C.oels, { addLabel: 'Add OEL', defaults: { unit: 'ppm', avg: 'TWA (full shift)', status: 'Advisory' } })}</div>
+      <div class="sec"><h2>Tasks</h2>${tableEditor('tasks', C.tasks, { addLabel: 'Add task', defaults: { routine: 'Routine' }, key: 'all' })}</div>
+      <div class="sec"><h2>Screening readings</h2>${tableEditor('screening', C.screening, { addLabel: 'Add reading', defaults: { date: today() } })}</div>
+      <div class="sec"><h2>Immediate concerns</h2><p class="hint">Obvious uncontrolled exposures to notify the client now, without waiting for data.</p>${tableEditor('concerns', C.concerns, { addLabel: 'Add concern', defaults: { status: 'Open', sev: 'High' } })}</div>`;
+  },
+  segs() {
+    return head('Similar exposure groups', 'Group by process, task, agent and environment, not job title. Shift length drives the OEL adjustment for each group.') +
+      `<div class="sec"><h2>SEG register</h2>${tableEditor('segs', C.segs, { addLabel: 'Add SEG', defaults: { status: 'Draft', shiftH: 12 } })}</div>
+      <div class="sec"><h2>Validation against measured data</h2><p class="hint">Updated as results arrive in the Exposure step.</p>${segValidation()}</div>`;
+  },
+  ohra() {
+    return head('OHRA: qualitative risk assessment', 'Rate each SEG \u00D7 agent profile. Low confidence on a serious health effect raises sampling priority. The suggested list is a sort order; the hygienist decides.') +
+      `<div class="sec"><h2>Exposure profiles and ratings</h2><p class="hint">Exposure rating (AIHA): 0 \u2264 1% of OEL, 1 \u2264 10%, 2 \u2264 50%, 3 \u2264 100%, 4 > 100%.</p>
+        ${tableEditor('profiles', C.rating, { addLabel: 'Add profile', key: 'rate', defaults: { scenario: 'Routine', conf: 'Medium', basis: 'Professional judgement' } })}
+        <div class="btn-row" style="margin-top:8px"><button class="btn" data-act="genProfiles">Create profiles for every SEG \u00D7 agent pair</button></div></div>
+      <div class="sec"><h2>Risk matrix</h2>${riskMatrix()}</div>
+      <div class="sec"><h2>Monitoring plan</h2><p class="hint">Method, number of samples and timing per profile. Include summer and non-routine tasks.</p>${tableEditor('profiles', C.plan, { key: 'plan', noAdd: true, noDelete: true, empty: 'Add exposure profiles above first.' })}</div>`;
+  },
+  exposure() {
+    if (!S.profiles.length) return head('Exposure assessment', '') + '<div class="sec"><p class="hint">Create exposure profiles in the OHRA step first.</p><button class="btn primary" data-act="tab" data-tab="ohra">Go to OHRA</button></div>';
+    if (!UI.profileId || !byId('profiles', UI.profileId)) UI.profileId = S.profiles[0].id;
+    const p = byId('profiles', UI.profileId), a = analyseProfile(p), st = a.stats, seg = byId('segs', p.segId), ag = byId('agents', p.agentId);
+    const list = S.profiles.map(q => { const qa = analyseProfile(q); return `<button data-act="selProfile" data-id="${q.id}"${q.id === p.id ? ' aria-current="true"' : ''}><b>${esc(profLabel(q))}</b><span>n = ${qa.n}${q.decCat !== undefined && q.decCat !== '' && q.decCat != null ? ` \u00B7 final category ${q.decCat}` : ' \u00B7 no decision'}</span></button>`; }).join('');
+    const unit = esc(a.unit), mw = ag && ag.mw;
+    const conv = mw && a.oelAdj && (a.unit === 'ppm' || a.unit === 'mg/m\u00B3') ? (a.unit === 'ppm' ? ` (${F(a.oelAdj * mw / 24.45)} mg/m\u00B3)` : ` (${F(a.oelAdj * 24.45 / mw)} ppm)`) : '';
+    const en = st.en689;
+    return head('Exposure assessment', 'Enter results in the unit of the selected OEL. Blanks and excluded samples are left out of the statistics.') +
+      `<div class="split"><div class="plist" role="list">${list}</div><div>
+      <div class="sec"><h2>${esc(profLabel(p))}</h2>
+        <table class="kv"><tr><th>SEG</th><td>${esc(seg ? seg.name : '')}${seg && seg.shiftH ? ` (${seg.shiftH} h shifts, ${esc(seg.rotation || 'rotation not set')})` : ''}</td></tr>
+        <tr><th>Agent</th><td>${esc(ag ? ag.name : '')} ${ag && ag.subcat ? `<span class="pill info">${esc(ag.subcat)}</span>` : ''}</td></tr>
+        <tr><th>OEL</th><td>${a.sel.oel ? `${F(a.sel.oel.value)} ${unit} ${esc(a.sel.oel.avg || '')} from ${esc(a.sel.oel.source || '?')} <span class="hint">(${esc(a.sel.why)})</span>` : `<span class="pill warn">${esc(a.sel.why)}</span>`}</td></tr>
+        <tr><th>Applied OEL</th><td>${a.oelAdj ? `<b>${F(a.oelAdj)} ${unit}</b>${conv} <span class="hint">${esc(a.rfNote)}</span>` : '\u2013'}</td></tr>
+        ${mocReview(p).length ? `<tr><th>MOC</th><td><span class="pill crit">Review required</span> ${mocReview(p).map(m => esc(m.ref || m.desc)).join(', ')}</td></tr>` : ''}</table></div>
+      <div class="sec"><h2>Samples</h2><div class="btn-row" style="margin-bottom:8px"><button class="btn" data-act="importCSV">Import lab results (CSV)</button><span class="hint" style="margin:0">CSV columns: coc, value, nd (matched to existing sample IDs)</span></div>
+        ${tableEditor('samples', C.samples, { filter: s => s.profileId === p.id, key: p.id, defaults: { profileId: p.id, date: today(), cond: 'Normal' }, addLabel: 'Add sample' })}</div>
+      <div class="sec"><h2>Statistics</h2>${st.n < 2 ? '<p class="hint">Enter at least 2 valid results to see statistics; 6 or more for a statistical decision.</p>' : `
+        <div class="stats-grid"><div><table class="kv">
+          <tr><th>n (non-detects)</th><td>${st.n} (${st.nd})</td></tr>
+          <tr><th>Non-detect method</th><td>${esc(st.censorMethod || '\u2013')}</td></tr>
+          <tr><th>Geometric mean</th><td>${F(st.gm)} ${unit}</td></tr>
+          <tr><th>GSD</th><td>${F(st.gsd)}</td></tr>
+          <tr><th>Arithmetic mean</th><td>${F(st.am)} ${unit}${st.amUclCox ? ` (UCL95 Cox ${F(st.amUclCox)})` : ''}</td></tr>
+          <tr><th>X95</th><td><b>${F(st.x95)} ${unit}</b>${a.oelAdj ? ` (${F(100 * st.x95 / a.oelAdj, 3)}% of OEL)` : ''}</td></tr>
+          <tr><th>X95 UCL${Math.round(S.decision.confAIHA * 100)}</th><td>${F(st.x95ucl)} ${unit}</td></tr>
+          ${a.oelAdj ? `<tr><th>Exceedance fraction</th><td>${F(100 * st.ef, 3)}%${st.efUcl !== undefined ? ` (UCL ${F(100 * st.efUcl, 3)}%)` : ''}</td></tr>
+          <tr><th>AIHA category (X95)</th><td><span class="cat cat${st.aihaCat}">${st.aihaCat}</span>${st.aihaCatUcl !== undefined ? ` <span class="hint">UCL gives ${st.aihaCatUcl}</span>` : ''}</td></tr>` : ''}
+          <tr><th>EN 689</th><td>${en ? `<span class="pill ${en.outcome === 'Compliance' ? 'ok' : en.outcome === 'Non-compliance' ? 'crit' : 'warn'}">${en.outcome}</span> <span class="hint">${esc(en.test)}: ${esc(en.note)}</span>` : '<span class="hint">Needs 3\u20135 (preliminary) or 6+ results and an OEL</span>'}</td></tr>
+          <tr><th>Lognormal fit</th><td>r = ${F(st.ppcc)}</td></tr>
+          <tr><th>Engine</th><td>v${st.engine}</td></tr></table>
+          ${(st.flags || []).map(f => `<div class="callout warn" style="margin-top:8px">${esc(f)}</div>`).join('')}</div>
+          <div class="plot">${logProbPlot(st, a.oelAdj, a.unit)}</div></div>`}</div>
+      <div class="sec"><h2>Hygienist decision</h2><p class="hint">Statistics inform the decision; they do not make it. Record the final category, outcome and why.</p>
+        <div class="cols">
+        <div class="field"><label for="dc">Final category</label><select id="dc" data-col="profiles" data-id="${p.id}" data-f="decCat" data-t="text" data-key="dec|cat"><option value=""></option>${[0, 1, 2, 3, 4].map(c => `<option${String(p.decCat) === String(c) ? ' selected' : ''}>${c}</option>`).join('')}</select></div>
+        <div class="field"><label for="do">Outcome</label><select id="do" data-col="profiles" data-id="${p.id}" data-f="decOutcome" data-t="text" data-key="dec|out"><option value=""></option>${L.outcome.map(c => `<option${p.decOutcome === c ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select></div>
+        <div class="field" style="grid-column:span 2"><label for="dr">Rationale</label><textarea id="dr" rows="3" data-col="profiles" data-id="${p.id}" data-f="decRationale" data-t="area" data-key="dec|rat">${esc(p.decRationale || '')}</textarea></div>
+        </div><div class="btn-row" style="margin-top:10px"><button class="btn primary" data-act="recordDecision" data-id="${p.id}">Record decision</button>${p.decBy ? `<span class="hint" style="margin:0">Recorded by ${esc(p.decBy)} on ${esc(p.decDate)}</span>` : ''}</div></div>
+      </div></div>`;
+  },
+  controls() {
+    return head('Controls and recommendations', 'Evaluate controls against the hierarchy, check RPE against measured exposure, and make recommendations that address the source first.') +
+      `<div class="sec"><h2>Existing controls</h2><p class="hint">LEV and enclosures need test results; inspection records alone count as unverified.</p>${tableEditor('controls', C.controls, { addLabel: 'Add control', defaults: { verified: 'Not verified' } })}</div>
+      <div class="sec"><h2>RPE adequacy and reassessment</h2><p class="hint">Required protection factor = X95 UCL \u00F7 applied OEL. Compare with the assigned protection factor of the RPE in use.</p>${tableEditor('profiles', C.rpe, { key: 'rpe', noAdd: true, noDelete: true, empty: 'No exposure profiles yet.' })}</div>
+      <div class="sec"><h2>Recommendations</h2>${tableEditor('recs', C.recs, { addLabel: 'Add recommendation', defaults: { status: 'Open', priority: '3 Medium' } })}
+        <div class="btn-row" style="margin-top:8px"><button class="btn" data-act="exportRecs">Export recommendations (CSV)</button></div></div>
+      <div class="sec"><h2>Management of change</h2><p class="hint">An open MOC flags every exposure profile with the same agent or SEG for review.</p>${tableEditor('moc', C.moc, { addLabel: 'Add MOC event', defaults: { status: 'Open', date: today() } })}</div>
+      <div class="sec"><h2>Close-out and handover</h2><div class="cols">${field('handover.date', 'Handover date', 'date')}${field('handover.recipient', 'Handed to (in-house hygienist)')}${field('handover.notes', 'Notes', 'area', { span: 2 })}</div>
+        <div class="btn-row" style="margin-top:10px"><button class="btn" data-act="exportPkg">Export exposure-database package (JSON)</button><button class="btn" data-act="exportCSVs">Export SEG register and results (CSV)</button></div></div>`;
+  },
+  report() {
+    const flags = qaFlags(), blocks = flags.filter(f => f.sev === 'Block'), open = flags.filter(f => f.sev === 'Flag' && !S.qaAck[f.key]);
+    const canSign = !blocks.length && !open.length && S.engagement.principal;
+    return head('Report', 'Generate the report from the current data. Every number comes from stored values; the narrative is yours.') +
+      `<div class="sec"><h2>Report details</h2><div class="cols">${field('report.title', 'Title')}${field('report.ref', 'Report reference')}${field('report.revision', 'Revision')}</div>
+        <div class="cols" style="margin-top:12px">${field('report.summary', 'Executive summary' + (S.report.summaryIsAI ? ' (AI draft: review and edit before issue)' : ''), 'area', { rows: 7, span: 2 })}${field('report.conclusions', 'Conclusions', 'area', { rows: 4, span: 2 })}${field('report.limitationsExtra', 'Additional limitations', 'area', { rows: 3, span: 2 })}</div>
+        <div class="btn-row" style="margin-top:10px"><button class="btn" data-act="aiDraft">Draft summary with AI</button><span class="hint" style="margin:0">${AI.key ? 'Uses your ' + esc(AI.provider) + ' key. Worker identities are not sent.' : 'Add an API key in Settings to enable.'}</span></div></div>
+      <div class="sec"><h2>Sign-off</h2>
+        ${S.signoff ? `<div class="callout">Signed by ${esc(S.signoff.name)} (${esc(S.signoff.credentials)}) on ${esc(S.signoff.at.slice(0, 16).replace('T', ' '))}. Snapshot hash <span class="mono">${esc(S.signoff.hash)}</span></div><button class="btn danger" data-act="unsign">Withdraw sign-off (new revision)</button>` :
+        `${blocks.length ? `<div class="callout crit">${blocks.length} blocking QA item(s) must be fixed before sign-off.</div>` : ''}${open.length ? `<div class="callout warn">${open.length} QA flag(s) need acknowledging in QA checks.</div>` : ''}${!S.engagement.principal ? '<div class="callout warn">Record the principal hygienist on the Engagement step.</div>' : ''}
+        <div class="btn-row"><button class="btn primary" data-act="sign"${canSign ? '' : ' disabled'}>Sign and freeze snapshot</button><button class="btn" data-act="tab" data-tab="qa">Open QA checks</button></div>`}</div>
+      <div class="sec"><h2>Preview</h2><div class="btn-row" style="margin-bottom:10px"><button class="btn primary" data-act="genReport">Generate preview</button><button class="btn" data-act="printReport"${UI.reportHtml ? '' : ' disabled'}>Print / save as PDF</button><button class="btn" data-act="docReport"${UI.reportHtml ? '' : ' disabled'}>Download Word (.doc)</button><button class="btn" data-act="htmlReport"${UI.reportHtml ? '' : ' disabled'}>Download HTML</button></div>
+        ${UI.reportHtml ? '<iframe class="report" id="repFrame" title="Report preview"></iframe>' : '<p class="hint">Generate the preview to review the full report.</p>'}</div>`;
+  },
+  qa() {
+    const flags = qaFlags(), order = { Block: 0, Flag: 1, Info: 2 }; flags.sort((a, b) => order[a.sev] - order[b.sev]);
+    return head('QA checks', 'Blocking items must be fixed. Flags can proceed once acknowledged with a note; they appear in the report as limitations where relevant.') +
+      `<div class="sec">${flags.length ? flags.map(f => `<div class="flag"><span class="pill ${f.sev === 'Block' ? 'crit' : f.sev === 'Flag' ? 'warn' : 'info'}">${f.sev}</span><div><div class="where">${esc(f.where)}</div>${esc(f.msg)}${S.qaAck[f.key] ? `<div class="hint" style="margin:4px 0 0">Acknowledged: ${esc(S.qaAck[f.key].note || '')} (${esc(S.qaAck[f.key].by || '')})</div>` : ''}</div>
+        <div>${f.sev === 'Flag' ? (S.qaAck[f.key] ? `<button class="btn" data-act="unack" data-key="${esc(f.key)}">Reopen</button>` : `<button class="btn" data-act="ack" data-key="${esc(f.key)}">Acknowledge</button>`) : ''}</div></div>`).join('') : '<p class="hint">No QA items. Add data to run the checks.</p>'}</div>`;
+  },
+  settings() {
+    return head('Settings and audit', 'Your name is stamped on every audit entry and decision.') +
+      `<div class="sec"><h2>You</h2><div class="cols">${field('user', 'Your name and credentials (for the audit trail)')}</div></div>
+      <div class="sec"><h2>AI drafting (optional)</h2><p class="hint">Bring your own key. Calls go straight from this browser to the provider. Only aggregated, structured findings are sent; never worker identities. AI output is always marked as a draft.</p>
+        <div class="cols">
+        <div class="field"><label for="aiP">Provider</label><select id="aiP" data-ai="provider"><option value="anthropic"${AI.provider === 'anthropic' ? ' selected' : ''}>Anthropic</option><option value="openai"${AI.provider === 'openai' ? ' selected' : ''}>OpenAI</option></select></div>
+        <div class="field"><label for="aiM">Model</label><input id="aiM" data-ai="model" value="${esc(AI.model)}"></div>
+        <div class="field"><label for="aiK">API key</label><input id="aiK" type="password" data-ai="key" value="${esc(AI.key)}" autocomplete="off"></div>
+        <div class="field"><label><input type="checkbox" data-ai="remember"${AI.remember ? ' checked' : ''}> Remember key on this device</label></div></div></div>
+      <div class="sec"><h2>Engagement file</h2><p class="hint">The saved file is the system of record. Encrypt files that leave your device.</p>
+        <div class="btn-row"><button class="btn primary" data-act="saveFile">Save file</button><button class="btn" data-act="saveEnc">Save encrypted file</button><button class="btn" data-act="openFile">Open file</button><button class="btn danger" data-act="newEng">Start new engagement</button></div></div>
+      <div class="sec"><h2>Audit trail</h2><p class="hint">${S.audit.length} entries, hash-chained. Verification detects any edit to past entries.</p>
+        <div class="btn-row" style="margin-bottom:10px"><button class="btn" data-act="verifyAudit">Verify chain</button></div>
+        <div class="tw" style="max-height:360px;overflow:auto"><table class="grid"><thead><tr><th>Time</th><th>User</th><th>Action</th><th>Detail</th></tr></thead><tbody>${S.audit.slice(-300).reverse().map(a => `<tr><td class="calc">${esc(a.t.slice(0, 19).replace('T', ' '))}</td><td><span class="calc">${esc(a.user)}</span></td><td><span class="calc">${esc(a.action)}</span></td><td><span class="calc" style="white-space:normal">${esc(a.detail)}</span></td></tr>`).join('') || '<tr><td colspan="4" class="empty">No entries yet.</td></tr>'}</tbody></table></div></div>
+      <p class="hint">${APP.name} v${APP.version}, statistics engine v${OHStats.VERSION}.</p>`;
+  }
+};
+
+function nextSteps() {
+  const s = [];
+  if (!S.decision.locked) s.push(['engagement', 'Lock the decision standard with the client.']);
+  if (!S.areas.length) s.push(['ohid', 'Add the areas and units in scope.']);
+  if (!S.oels.length && S.agents.length) s.push(['ohid', 'Enter OELs for the agents from your licensed sources.']);
+  if (!S.segs.length) s.push(['segs', 'Form the first similar exposure groups.']);
+  if (S.segs.length && !S.profiles.length) s.push(['ohra', 'Create exposure profiles and rate them.']);
+  const und = S.profiles.filter(p => S.samples.some(x => x.profileId === p.id) && (p.decCat === undefined || p.decCat === '' || p.decCat == null));
+  if (und.length) s.push(['exposure', `Record decisions for ${und.length} profile(s) with results.`]);
+  const fl = qaFlags(); if (fl.some(f => f.sev === 'Block')) s.push(['qa', 'Fix blocking QA items.']);
+  if (!s.length) s.push(['report', 'Generate and review the report.']);
+  return `<table class="kv">${s.map(([t, m]) => `<tr><td>${esc(m)}</td><td style="text-align:right"><button class="btn" data-act="tab" data-tab="${t}">Open</button></td></tr>`).join('')}</table>`;
+}
+function segValidation() {
+  const rows = S.profiles.map(p => ({ p, a: analyseProfile(p) })).filter(x => x.a.n >= 2);
+  if (!rows.length) return '<p class="hint">No profiles with 2 or more results yet.</p>';
+  return `<div class="tw"><table class="grid"><thead><tr><th>Profile</th><th>n</th><th>GSD</th><th>Fit r</th><th>Individuals above 2\u00D7 GM</th><th>Check</th></tr></thead><tbody>${rows.map(({ p, a }) => {
+    const smp = S.samples.filter(s => s.profileId === p.id && !s.blank && !s.excluded && s.value > 0 && !s.nd);
+    const byW = {}; smp.forEach(s => { const w = s.worker || '(unnamed)'; (byW[w] = byW[w] || []).push(s.value); });
+    const hi = Object.entries(byW).filter(([, v]) => Math.exp(OHStats.mean(v.map(Math.log))) > 2 * a.stats.gm).map(([w]) => w);
+    const bad = a.stats.gsd > 3 || hi.length || a.stats.ppcc < 0.9;
+    return `<tr><td><span class="calc">${esc(profLabel(p))}</span></td><td><span class="calc">${a.n}</span></td><td><span class="calc">${F(a.stats.gsd)}</span></td><td><span class="calc">${F(a.stats.ppcc)}</span></td><td><span class="calc">${esc(hi.join(', ') || 'None')}</span></td><td><span class="calc">${bad ? '<span class="pill warn">Review grouping</span>' : '<span class="pill ok">No flag</span>'}</span></td></tr>`;
+  }).join('')}</tbody></table></div>`;
+}
+function riskMatrix() {
+  let h = '<div class="tw"><table class="grid" style="width:auto"><thead><tr><th>Health effect \u2193 / Exposure \u2192</th>' + [0, 1, 2, 3, 4].map(e => `<th>${e}</th>`).join('') + '</tr></thead><tbody>';
+  for (let her = 4; her >= 1; her--) {
+    h += `<tr><th>${her}</th>`;
+    for (let e = 0; e <= 4; e++) {
+      const ps = S.profiles.filter(p => Number(p.her) === her && Number(p.erc) === e && p.erc !== '' && p.erc != null);
+      const s = e * her, bg = s >= 12 ? 'var(--crit-soft)' : s >= 6 ? 'var(--warn-soft)' : s >= 3 ? 'var(--accent-soft)' : 'var(--ok-soft)';
+      h += `<td style="background:${bg};min-width:120px;font-size:12px">${ps.map(p => esc(profLabel(p))).join('<br>') || '&nbsp;'}</td>`;
+    }
+    h += '</tr>';
+  }
+  return h + '</tbody></table></div><p class="hint" style="margin-top:8px">Score = exposure \u00D7 health effect: 12+ high, 6\u201311 medium, 3\u20135 low. Replace with the client matrix if required.</p>';
+}
+
+// ---------------- log-probability plot ----------------
+function logProbPlot(st, oel, unit) {
+  if (!st.plot || st.plot.length < 2) return '';
+  const W = 460, H = 320, ml = 56, mr = 16, mt = 16, mb = 44, pw = W - ml - mr, ph = H - mt - mb;
+  const vals = st.plot.map(p => p.v).concat(oel ? [oel] : []).concat([st.x95]);
+  let lo = Math.floor(Math.log10(Math.min(...vals) / 1.2)), hi = Math.ceil(Math.log10(Math.max(...vals) * 1.2));
+  if (hi === lo) hi = lo + 1;
+  const zmin = -2.6, zmax = 2.6, X = z => ml + (z - zmin) / (zmax - zmin) * pw, Y = v => mt + ph - (Math.log10(v) - lo) / (hi - lo) * ph;
+  const pcts = [1, 5, 10, 25, 50, 75, 90, 95, 99];
+  let g = '';
+  pcts.forEach(pc => { const x = X(OHStats.normInv(pc / 100)); g += `<line x1="${x}" x2="${x}" y1="${mt}" y2="${mt + ph}" stroke="#E2E8EC"/><text x="${x}" y="${mt + ph + 16}" font-size="10.5" text-anchor="middle" fill="#55656F">${pc}</text>`; });
+  for (let d = lo; d <= hi; d++) { const y = Y(10 ** d); g += `<line x1="${ml}" x2="${ml + pw}" y1="${y}" y2="${y}" stroke="#D3DBE0"/><text x="${ml - 6}" y="${y + 3.5}" font-size="10.5" text-anchor="end" fill="#55656F">${F(10 ** d)}</text>`; for (let m = 2; m < 10 && d < hi; m++) { const y2 = Y(m * 10 ** d); g += `<line x1="${ml}" x2="${ml + pw}" y1="${y2}" y2="${y2}" stroke="#EEF2F4"/>`; } }
+  const lgm = Math.log(st.gm), ls = Math.log(st.gsd), fit = z => Math.exp(lgm + ls * z);
+  const cid = 'pc' + Math.random().toString(36).slice(2, 8);
+  const fl = `<clipPath id="${cid}"><rect x="${ml}" y="${mt}" width="${pw}" height="${ph}"/></clipPath><line clip-path="url(#${cid})" x1="${X(zmin)}" y1="${Y(fit(zmin))}" x2="${X(zmax)}" y2="${Y(fit(zmax))}" stroke="#55656F" stroke-dasharray="4 3"/>`;
+  const ol = oel ? `<line x1="${ml}" x2="${ml + pw}" y1="${Y(oel)}" y2="${Y(oel)}" stroke="#B3261E" stroke-width="1.5"/><text x="${ml + pw - 4}" y="${Y(oel) - 5}" font-size="11" text-anchor="end" fill="#B3261E" font-weight="600">OEL ${F(oel)}</text>` : '';
+  const pts = st.plot.map(p => `<circle cx="${X(p.z)}" cy="${Y(p.v)}" r="4.2" fill="${p.imputed ? '#fff' : '#1D5FA8'}" stroke="#1D5FA8" stroke-width="1.5"><title>${F(p.v)} ${esc(unit)}${p.imputed ? ' (imputed non-detect)' : ''}</title></circle>`).join('');
+  const x95 = `<circle cx="${X(1.6449)}" cy="${Y(st.x95)}" r="5" fill="none" stroke="#9A5F0C" stroke-width="2"/><text x="${X(1.6449) - 8}" y="${Y(st.x95) - 8}" font-size="11" text-anchor="end" fill="#9A5F0C" font-weight="600">X95</text>`;
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Log-probability plot of results"><rect x="${ml}" y="${mt}" width="${pw}" height="${ph}" fill="#fff" stroke="#B7C3CA"/>${g}${fl}${ol}${pts}${x95}<text x="${ml + pw / 2}" y="${H - 6}" font-size="11.5" text-anchor="middle" fill="#16232B">Cumulative probability (%)</text><text transform="translate(14 ${mt + ph / 2}) rotate(-90)" font-size="11.5" text-anchor="middle" fill="#16232B">Concentration (${esc(unit || 'unit')})</text></svg>
+  <p class="hint" style="margin:6px 0 0">Filled: measured. Hollow: imputed non-detect. Dashed: fitted lognormal.</p>`;
+}
+
+// ---------------- report ----------------
+function reportHTML() {
+  const e = S.engagement, d = S.decision, r = S.report, so = S.signoff;
+  const T = (hd, rows) => `<table><thead><tr>${hd.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.length ? rows.map(rw => `<tr>${rw.map(c => `<td>${c}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${hd.length}"><em>None recorded.</em></td></tr>`}</tbody></table>`;
+  const flags = qaFlags();
+  const lim = [];
+  const allF = ['Process units', 'Laboratories', 'Workshops', 'Warehouses / chemical stores', 'Camps / accommodation'];
+  allF.filter(x => !(e.facilities || []).includes(x)).forEach(x => lim.push(`${x} were not in scope.`));
+  L.workforce.filter(x => !(e.workforce || []).includes(x)).forEach(x => lim.push(`${x} were not in scope.`));
+  L.seasons.filter(x => !(e.seasons || []).includes(x)).forEach(x => lim.push(`${x} conditions were not assessed.`));
+  if (e.exclusions) lim.push(esc(e.exclusions));
+  S.areas.filter(a => !a.visited).forEach(a => lim.push(`${esc(a.name)} was not visited${a.noVisit ? ': ' + esc(a.noVisit) : ''}.`));
+  flags.filter(f => f.sev === 'Flag' && S.qaAck[f.key]).forEach(f => lim.push(`${esc(f.where)}: ${esc(f.msg)} (acknowledged: ${esc(S.qaAck[f.key].note)})`));
+  if (r.limitationsExtra) lim.push(esc(r.limitationsExtra));
+  const oelRows = S.oels.map(o => [esc(nm('agents', o.agentId)), esc(o.source), esc(o.jur), `${F(o.value)} ${esc(o.unit)}`, esc(o.avg), esc(o.status), esc(o.citation)]);
+  const res = S.profiles.map(p => {
+    const a = analyseProfile(p), st = a.stats, u = esc(a.unit);
+    return `<h3>${esc(profLabel(p))}</h3>
+    <p>Applied OEL: ${a.oelAdj ? `${F(a.oelAdj)} ${u} (${esc(a.sel.oel.source)}; ${esc(a.rfNote)})` : 'none selected'}. OHRA rating: exposure ${esc(p.erc ?? '\u2013')}, health effect ${esc(p.her ?? '\u2013')}, confidence ${esc(p.conf || '\u2013')}.</p>
+    ${st.n >= 2 ? `<table class="kv"><tbody>
+      <tr><th>n (non-detects)</th><td>${st.n} (${st.nd}); ${esc(st.censorMethod)}</td><th>GM / GSD</th><td>${F(st.gm)} ${u} / ${F(st.gsd)}</td></tr>
+      <tr><th>X95 (UCL${Math.round(d.confAIHA * 100)})</th><td>${F(st.x95)} (${F(st.x95ucl)}) ${u}</td><th>Exceedance fraction (UCL)</th><td>${st.ef !== undefined ? F(100 * st.ef, 3) + '%' : '\u2013'}${st.efUcl !== undefined ? ' (' + F(100 * st.efUcl, 3) + '%)' : ''}</td></tr>
+      <tr><th>AIHA category (X95)</th><td>${st.aihaCat ?? '\u2013'}</td><th>EN 689</th><td>${st.en689 ? esc(st.en689.outcome + ' (' + st.en689.test + ')') : '\u2013'}</td></tr></tbody></table>
+      <div class="fig">${logProbPlot(st, a.oelAdj, a.unit).replace(/<p class="hint"[^]*?<\/p>/, '')}</div>` : `<p><em>${st.n} valid result(s): no statistics.</em></p>`}
+    <p><b>Decision:</b> ${p.decCat !== undefined && p.decCat !== '' && p.decCat != null ? `category ${esc(p.decCat)}, ${esc(p.decOutcome || '')}. ${esc(p.decRationale || '')} (${esc(p.decBy || '')}, ${esc(p.decDate || '')})` : 'not yet recorded.'}</p>`;
+  }).join('');
+  const surv = S.profiles.filter(p => p.surveillance).map(p => [esc(profLabel(p)), esc(p.surveillance)]);
+  const resched = S.profiles.map(p => [esc(profLabel(p)), esc(p.decCat ?? '\u2013'), reassessMonths(p) ? reassessMonths(p) + ' months' : '\u2013']);
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>${esc(r.title)}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+  <style>body{font:11pt/1.55 'Source Serif 4',Georgia,serif;color:#16232B;max-width:820px;margin:32px auto;padding:0 28px}h1,h2,h3,th{font-family:'Public Sans',Arial,sans-serif}h1{font-size:22pt;margin:0 0 4px;letter-spacing:-.01em}h2{font-size:14pt;margin:28px 0 8px;border-bottom:2px solid #1D5FA8;padding-bottom:4px}h3{font-size:11.5pt;margin:18px 0 6px}table{border-collapse:collapse;width:100%;font-size:9.5pt;margin:6px 0 12px}th,td{border:1px solid #C9D3D9;padding:4px 6px;text-align:left;vertical-align:top}th{background:#EEF2F4;font-weight:600}.kv th{width:22%}.meta{color:#55656F;font-family:'Public Sans',Arial,sans-serif;font-size:9.5pt}.fig svg{max-width:440px}.sign{border:1px solid #1D5FA8;padding:10px 14px;margin-top:16px;font-family:'Public Sans',Arial,sans-serif;font-size:9.5pt}footer{margin-top:32px;font-size:8.5pt;color:#55656F;font-family:'Public Sans',Arial,sans-serif;border-top:1px solid #C9D3D9;padding-top:6px}@media print{body{margin:0}h2{page-break-after:avoid}h3,table,.fig{page-break-inside:avoid}}</style></head><body>
+  <h1>${esc(r.title)}</h1><p class="meta">${esc(e.site)} \u2014 ${esc(e.client)} \u2014 ${esc(e.type)}<br>Report ${esc(r.ref || '(no reference)')}, revision ${esc(r.revision)}${so ? `, signed ${esc(so.at.slice(0, 10))}` : ', DRAFT (not signed)'}<br>Lead consultant: ${esc(e.consultant)}; principal hygienist: ${esc(e.principal)}</p>
+  <h2>1. Executive summary</h2>${r.summaryIsAI ? '<p class="meta"><em>Drafted with AI assistance and reviewed by the hygienist.</em></p>' : ''}<p>${esc(r.summary || 'Executive summary not yet written.').replace(/\n/g, '<br>')}</p>
+  <h2>2. Introduction and scope</h2><p>Engagement type: ${esc(e.type)}${e.trigger ? ` (trigger: ${esc(e.trigger)})` : ''}. Fieldwork ${esc(e.start || '?')} to ${esc(e.end || '?')}. Facilities: ${esc((e.facilities || []).join(', '))}. Workforce: ${esc((e.workforce || []).join(', '))}. Seasons: ${esc((e.seasons || []).join(', '))}.</p>
+  <h2>3. Methodology</h2><p>Exposure assessment followed the AIHA exposure assessment strategy and BS EN 689:2018+AC:2019. OEL selection: ${esc(d.oelRule)}${d.sources ? ` (${esc(d.sources)})` : ''}. Statistical decision: ${esc(d.statTest)}; AIHA confidence ${d.confAIHA}, EN 689 confidence ${d.confEN}. Shift adjustment: ${esc(d.shiftModel)}. Non-detects were handled by robust regression on order statistics where possible. Statistics engine v${OHStats.VERSION}. Decision standard ${d.locked ? `locked by ${esc(d.lockedBy)} on ${esc(d.lockedAt.slice(0, 10))}` : 'not locked'}.</p>
+  ${T(['Agent', 'Source', 'Jurisdiction', 'Value', 'Averaging', 'Status', 'Citation'], oelRows)}
+  ${T(['Laboratory', 'Accreditation', 'Scope', 'Expiry'], S.labs.map(l => [esc(l.name), esc(l.accred), esc(l.scope), esc(l.expiry)]))}
+  <h2>4. Limitations</h2>${lim.length ? '<ul>' + lim.map(x => `<li>${x}</li>`).join('') + '</ul>' : '<p>None recorded.</p>'}
+  <h2>5. Hazard inventory</h2>${T(['Area', 'Hazardous area', 'Process'], S.areas.map(a => [esc(a.name), esc(a.zone), esc(a.process)]))}
+  ${T(['Agent', 'CAS', 'Sub-category', 'Health effects', 'Source note'], S.agents.map(a => [esc(a.name), esc(a.cas), esc(a.subcat), esc(a.endpoints), esc(a.stream)]))}
+  ${T(['Task', 'Area', 'Routine', 'Frequency', 'Duration (min)', 'PPE / RPE'], S.tasks.map(t => [esc(t.name), esc(nm('areas', t.areaId)), esc(t.routine), esc(t.freq), esc(t.dur ?? ''), esc(t.ppe)]))}
+  <h2>6. Similar exposure groups</h2>${T(['ID', 'Name', 'Definition', 'Headcount (own / contractor)', 'Shift', 'Rationale', 'Status'], S.segs.map(s => [esc(s.code), esc(s.name), esc(s.definition), `${esc(s.headOwn ?? 0)} / ${esc(s.headCon ?? 0)}`, `${esc(s.shiftH ?? '')} h ${esc(s.rotation || '')}`, esc(s.rationale), esc(s.status)]))}
+  <h2>7. Results by SEG and agent</h2>${res || '<p>No exposure profiles.</p>'}
+  <h2>8. Control assessment</h2>${T(['Control', 'Level', 'Area', 'Evidence', 'Verification'], S.controls.map(c => [esc(c.desc), esc(c.level), esc(nm('areas', c.areaId)), esc(c.evidence), esc(c.verified)]))}
+  ${T(['Profile', 'RPE in use', 'Assigned PF', 'Adequacy'], S.profiles.filter(p => p.rpeType || p.rpeApf).map(p => [esc(profLabel(p)), esc(p.rpeType), esc(p.rpeApf ?? ''), rpeVerdict(p).replace(/<[^>]+>/g, '')]))}
+  <h2>9. Recommendations</h2>${T(['#', 'Recommendation', 'Hierarchy', 'Priority', 'Profile', 'Owner', 'Due', 'Verification'], S.recs.slice().sort((a, b) => (a.priority || '9').localeCompare(b.priority || '9')).map((x, i) => [i + 1, esc(x.statement), esc(x.level), esc(x.priority), esc(profLabel(byId('profiles', x.profileId))), esc(x.owner), esc(x.due), esc(x.verify)]))}
+  <h2>10. Monitoring programme</h2>${T(['Profile', 'Final category', 'Reassess'], resched)}
+  <h2>11. Health surveillance linkage</h2>${T(['Profile', 'Surveillance'], surv)}
+  ${r.conclusions ? `<h2>12. Conclusions</h2><p>${esc(r.conclusions).replace(/\n/g, '<br>')}</p>` : ''}
+  <h2>Appendix A. Sample data</h2>${T(['Sample', 'Profile', 'Date', 'Worker', 'Duration', 'Result', 'Condition', 'Status'], S.samples.map(s => [esc(s.coc), esc(profLabel(byId('profiles', s.profileId))), esc(s.date), esc(s.worker), esc(s.durMin ?? ''), `${s.nd ? '&lt;' : ''}${F(s.value)}`, esc(s.cond), s.blank ? 'Blank' : s.excluded ? 'Excluded: ' + esc(s.exclReason) : 'Valid']))}
+  ${T(['Equipment', 'Type', 'Ex rating', 'Certificate', 'Calibration due'], S.equipment.map(q => [esc(q.asset), esc(q.type), esc(q.exZone), esc(q.exCert), esc(q.calDue)]))}
+  ${so ? `<div class="sign">Signed: ${esc(so.name)}, ${esc(so.credentials)}<br>Date: ${esc(so.at.slice(0, 16).replace('T', ' '))}<br>Snapshot SHA-256: ${esc(so.hash)}</div>` : ''}
+  <footer>Generated by ${APP.name} v${APP.version} (Risk2Safe). Statistics engine v${OHStats.VERSION}.${so ? ' Snapshot ' + esc(so.hash.slice(0, 16)) + '\u2026' : ' Draft: not signed.'}</footer></body></html>`;
+}
+
+// ---------------- files ----------------
+function download(name, text, type) { const b = new Blob([text], { type }); const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 1500); }
+const fileBase = () => 'OHA_' + (S.engagement.site || 'engagement').replace(/[^\w-]+/g, '_').slice(0, 40) + '_' + today();
+async function snapshotHash() { const c = JSON.parse(JSON.stringify(S)); delete c.audit; delete c.signoff; return sha256(JSON.stringify(c)); }
+const b64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+async function deriveKey(pass, salt) { const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']); return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 250000, hash: 'SHA-256' }, k, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']); }
+async function encryptText(text, pass) { const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12)); const key = await deriveKey(pass, salt); const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(text)); return JSON.stringify({ format: APP.format + '-encrypted', v: 1, kdf: 'PBKDF2-SHA256-250000', salt: b64(salt), iv: b64(iv), data: b64(ct) }); }
+async function decryptText(obj, pass) { const key = await deriveKey(pass, unb64(obj.salt)); const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(obj.iv) }, key, unb64(obj.data)); return new TextDecoder().decode(pt); }
+function ask(title, body, fields, okLabel = 'OK') {
+  return new Promise(res => {
+    const d = $('#dlg');
+    d.innerHTML = `<form method="dialog"><h2>${esc(title)}</h2>${body ? `<p class="hint">${esc(body)}</p>` : ''}${fields.map((f, i) => `<div class="field" style="margin-bottom:10px"><label for="dq${i}">${esc(f.l)}</label>${f.t === 'area' ? `<textarea id="dq${i}" rows="3">${esc(f.v || '')}</textarea>` : `<input id="dq${i}" type="${f.t || 'text'}" value="${esc(f.v || '')}">`}</div>`).join('')}<div class="btn-row" style="flex-direction:row-reverse;margin-top:12px"><button class="btn primary" value="ok">${esc(okLabel)}</button><button class="btn" value="cancel" formnovalidate>Cancel</button></div></form>`;
+    d.returnValue = '';
+    d.onclose = () => { if (d.returnValue !== 'ok') return res(null); res(fields.map((_, i) => $('#dq' + i).value)); };
+    d.showModal(); const first = d.querySelector('input,textarea'); if (first) first.focus();
+  });
+}
+function toCSV(rows) { return rows.map(r => r.map(c => { const s = String(c ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }).join(',')).join('\n'); }
+function parseCSV(t) {
+  const rows = []; let row = [], cur = '', q = false;
+  for (let i = 0; i < t.length; i++) { const ch = t[i];
+    if (q) { if (ch === '"' && t[i + 1] === '"') { cur += '"'; i++; } else if (ch === '"') q = false; else cur += ch; }
+    else if (ch === '"') q = true; else if (ch === ',') { row.push(cur); cur = ''; } else if (ch === '\n' || ch === '\r') { if (ch === '\r' && t[i + 1] === '\n') i++; row.push(cur); rows.push(row); row = []; cur = ''; } else cur += ch; }
+  if (cur || row.length) { row.push(cur); rows.push(row); }
+  return rows.filter(r => r.some(c => c.trim() !== ''));
+}
+
+// ---------------- templates & demo ----------------
+const REQ_SOUR = ['PFDs, heat and material balances, stream compositions', 'Chemical inventory and SDSs', 'Previous OH surveys and monitoring data', 'Occupational health surveillance data (aggregated)', 'Incident, near-miss and gas detector alarm logs', 'Organisation chart, rosters, shift pattern', 'Turnaround and maintenance plans', 'NORM survey records', 'LEV and ventilation drawings, test records', 'RPE programme documents and fit-test records'];
+const HAZ_SOUR = [
+  ['Hydrogen sulphide (H\u2082S)', '7783-06-4', 'Chemical', 'Acute toxic gas', 34.08], ['Sulphur dioxide', '7446-09-5', 'Chemical', 'Acute toxic gas', 64.07], ['Carbon monoxide', '630-08-0', 'Chemical', 'Acute toxic gas', 28.01],
+  ['Methyl mercaptan', '74-93-1', 'Chemical', 'Acute toxic gas', 48.11], ['Benzene', '71-43-2', 'Chemical', 'Chronic chemical', 78.11], ['Toluene', '108-88-3', 'Chemical', 'Chronic chemical', 92.14],
+  ['n-Hexane', '110-54-3', 'Chemical', 'Chronic chemical', 86.18], ['Mercury (elemental vapour)', '7439-97-6', 'Chemical', 'Chronic chemical', 200.59], ['Methyldiethanolamine (MDEA)', '105-59-9', 'Chemical', 'Chronic chemical', 119.16],
+  ['Methanol', '67-56-1', 'Chemical', 'Chronic chemical', 32.04], ['Sulphur dust', '7704-34-9', 'Chemical', 'Particulate', null], ['Respirable crystalline silica', '14808-60-7', 'Chemical', 'Particulate', null],
+  ['Welding fume', '', 'Chemical', 'Particulate', null], ['Noise', '', 'Physical', 'Physical agent', null], ['Heat stress', '', 'Physical', 'Physical agent', null],
+  ['NORM (scale, sludge)', '', 'Physical', 'Physical agent', null], ['Legionella', '', 'Biological', 'Biological', null], ['Manual handling', '', 'Ergonomic', 'Ergonomic', null]];
+function addHazLib() { let n = 0; HAZ_SOUR.forEach(([name, cas, cls, subcat, mw]) => { if (!S.agents.some(a => a.name === name)) { S.agents.push({ id: uid('ag'), name, cas, cls, subcat, mw }); n++; } }); return n; }
+function loadDemo() {
+  S = blank(); S.user = S.user || 'Demo user';
+  Object.assign(S.engagement, { client: 'Demo Gas Company', site: 'Demo sour gas plant', country: 'United Arab Emirates', start: '2026-07-06', end: '2026-07-17', consultant: 'Demo consultant', principal: 'Demo principal hygienist', workforce: ['Own staff', 'Contractors', 'Turnaround workforce'], seasons: ['Summer'] });
+  REQ_SOUR.forEach((item, i) => S.datareq.push({ id: uid('dr'), item, status: i < 6 ? 'Reviewed' : 'Requested' }));
+  const ar = n => ({ id: uid('ar'), ...n });
+  const A1 = ar({ name: 'Inlet and amine unit', zone: 'Zone 2', process: 'Inlet separation, MDEA acid gas removal', visited: true }), A2 = ar({ name: 'SRU / TGTU', zone: 'Zone 2', process: 'Claus sulphur recovery, tail gas treatment', visited: true }),
+    A3 = ar({ name: 'Condensate storage', zone: 'Zone 1', process: 'Stabilised condensate tanks, sampling, gauging', visited: true }), A4 = ar({ name: 'Granulation and loading', zone: 'Non-hazardous', process: 'Sulphur granulation and truck loading', visited: true });
+  S.areas.push(A1, A2, A3, A4); addHazLib();
+  const ag = n => S.agents.find(a => a.name.startsWith(n)).id;
+  const bz = ag('Benzene'), h2s = ag('Hydrogen'), hg = ag('Mercury');
+  S.agents.find(a => a.id === bz).stream = 'Condensate up to 0.4 wt% benzene (demo)';
+  S.oels.push({ id: uid('oel'), agentId: bz, source: 'Demo company standard', jur: 'Demo', value: 0.5, unit: 'ppm', avg: 'TWA (full shift)', status: 'Company standard', citation: 'Demo value only: replace with a verified source' },
+    { id: uid('oel'), agentId: h2s, source: 'Demo company standard', jur: 'Demo', value: 5, unit: 'ppm', avg: 'STEL (15 min)', status: 'Company standard', citation: 'Demo value only: replace with a verified source' },
+    { id: uid('oel'), agentId: hg, source: 'Demo company standard', jur: 'Demo', value: 25, unit: '\u00B5g/m\u00B3', avg: 'TWA (full shift)', status: 'Company standard', citation: 'Demo value only: replace with a verified source' });
+  S.tasks.push({ id: uid('tk'), name: 'Condensate sampling and tank gauging', areaId: A3.id, roles: 'Field operator', routine: 'Routine', freq: 'Daily', dur: 40, ppe: 'Half-mask organic vapour (not always)' },
+    { id: uid('tk'), name: 'Sulphur pit inspection', areaId: A2.id, roles: 'SRU operator', routine: 'Routine', freq: 'Daily', dur: 15, ppe: 'Personal H\u2082S monitor' },
+    { id: uid('tk'), name: 'Exchanger opening (turnaround)', areaId: A1.id, roles: 'Contractor fitters', routine: 'Non-routine', freq: 'Turnaround / annual', dur: 240, planned: '2026-07-14', fromKickoff: true, ppe: 'Airline respirator' });
+  S.kickoff = { date: '2026-07-06', attendees: 'Operations, maintenance, HSE, OH physician, contractor representative', access: 'Escort required in process areas; hot work permits via PTW', h2s: 'Personal H\u2082S monitors for all; muster at windsock-upwind point', notes: 'Turnaround on train 2 starts 14 July' };
+  const sg = n => ({ id: uid('seg'), status: 'Approved', ...n });
+  const G1 = sg({ code: 'SEG-01', name: 'Condensate field operators', definition: 'Field operators assigned to condensate storage and loading', criteria: 'Roster assignment to condensate area', taskList: 'Sampling and gauging daily, 40 min; rounds', headOwn: 12, headCon: 0, shiftH: 12, rotation: '14/14, day and night', rationale: 'Same tasks, same source, same area' }),
+    G2 = sg({ code: 'SEG-02', name: 'SRU operators', definition: 'Operators on SRU/TGTU rounds and pit inspection', criteria: 'SRU roster', taskList: 'Pit inspection daily, 15 min; rounds', headOwn: 8, headCon: 0, shiftH: 12, rotation: '14/14', rationale: 'Shared H\u2082S sources and tasks' }),
+    G3 = sg({ code: 'SEG-03', name: 'Turnaround vessel-opening contractors', definition: 'Contractor fitters opening exchangers and vessels during turnaround', criteria: 'Turnaround work packs for vessel opening', taskList: 'Exchanger opening 4 h/day during turnaround', headOwn: 0, headCon: 18, shiftH: 12, rotation: 'Turnaround 28 days', rationale: 'Mercury in inlet gas: deposit exposure during opening' });
+  S.segs.push(G1, G2, G3);
+  const pr = n => ({ id: uid('pf'), ...n });
+  const P1 = pr({ segId: G1.id, agentId: bz, avg: 'TWA (full shift)', scenario: 'Routine', erc: '3', her: '4', conf: 'Low', basis: 'Surrogate data', rationale: 'Open sampling points; benzene in condensate', method: 'NIOSH 1501 charcoal tube', nReq: 8, timing: 'Summer, day and night shifts', surveillance: 'Blood count; urinary S-PMA', rpeType: 'Half-mask, organic vapour', rpeApf: 10 }),
+    P2 = pr({ segId: G2.id, agentId: h2s, avg: 'STEL (15 min)', scenario: 'Routine', erc: '3', her: '4', conf: 'Medium', basis: 'Measured data', rationale: 'Pit vent peaks seen on detector logs', method: 'Datalogging electrochemical monitor', nReq: 6, timing: 'Pit inspection tasks' }),
+    P3 = pr({ segId: G3.id, agentId: hg, avg: 'TWA (full shift)', scenario: 'Non-routine', erc: '2', her: '4', conf: 'Low', basis: 'Professional judgement', rationale: 'Mercury reported in inlet gas; no removal unit', method: 'NIOSH 6009 sorbent tube', nReq: 6, timing: 'Turnaround exchanger opening', surveillance: 'Urinary mercury' });
+  S.profiles.push(P1, P2, P3);
+  S.equipment.push({ id: uid('eq'), asset: 'PUMP-01', type: 'Sampling pump', exZone: 'Zone 1', exCert: 'IECEx Ex ia IIC T4', calDue: '2026-12-31' }, { id: uid('eq'), asset: 'H2S-LOG-07', type: 'H\u2082S datalogging monitor', exZone: 'Zone 0', exCert: 'IECEx Ex ia IIC T4', calDue: '2026-09-30' });
+  S.labs.push({ id: uid('lab'), name: 'Demo accredited laboratory', accred: 'ISO/IEC 17025 demo-0001', scope: 'NIOSH 1501, NIOSH 6009', expiry: '2027-03-31' });
+  const pump = S.equipment[0].id, logr = S.equipment[1].id, lab = S.labs[0].id;
+  [0.12, 0.31, 0.08, 0.22, 0.64, 0.18, 0.41, 0.15].forEach((v, i) => S.samples.push({ id: uid('sm'), profileId: P1.id, coc: 'BZ-' + (101 + i), date: '2026-07-0' + (7 + (i % 3)), worker: 'W' + (1 + (i % 5)), areaId: A3.id, task: 'Rounds, sampling, gauging', durMin: 640, flowPre: 0.2, flowPost: 0.198, value: v, nd: false, equipId: pump, labId: lab, rpe: i % 2 ? 'None' : 'Half-mask during sampling', cond: 'Normal' }));
+  S.samples.push({ id: uid('sm'), profileId: P1.id, coc: 'BZ-FB1', date: '2026-07-07', blank: true, value: 0.01, nd: true, cond: 'Normal', labId: lab }, { id: uid('sm'), profileId: P1.id, coc: 'BZ-FB2', date: '2026-07-09', blank: true, value: 0.01, nd: true, cond: 'Normal', labId: lab });
+  [3.1, 6.4, 2.2, 4.8, 1.6].forEach((v, i) => S.samples.push({ id: uid('sm'), profileId: P2.id, coc: 'HS-' + (201 + i), date: '2026-07-1' + i, worker: 'S' + (1 + i), areaId: A2.id, task: 'Sulphur pit inspection', durMin: 15, value: v, nd: false, equipId: logr, logger: true, rpe: 'None', cond: 'Normal' }));
+  [[4.2, false], [2, true], [11.5, false], [7.9, false], [2, true]].forEach(([v, nd], i) => S.samples.push({ id: uid('sm'), profileId: P3.id, coc: 'HG-' + (301 + i), date: '2026-07-1' + (4 + (i % 3)), worker: 'C' + (1 + i), areaId: A1.id, task: 'Exchanger opening', durMin: 600, flowPre: 0.2, flowPost: 0.201, value: v, nd, equipId: pump, labId: lab, rpe: 'Airline respirator', cond: 'Turnaround' }));
+  S.controls.push({ id: uid('ct'), desc: 'Open-loop condensate sample points', level: 'Engineering', areaId: A3.id, agentId: bz, evidence: 'Observed vapour release during sampling', verified: 'Not verified' });
+  S.recs.push({ id: uid('rc'), statement: 'Install closed-loop sampling at condensate sample points SP-3 and SP-4', level: 'Engineering', profileId: P1.id, priority: '2 High', rationale: 'X95 near the applied OEL; open sampling observed', owner: 'Operations', due: '2026-12-31', verify: 'Re-sample SEG-01 after installation', status: 'Open' });
+  S.decision.locked = true; S.decision.lockedBy = 'Demo principal hygienist'; S.decision.lockedAt = new Date().toISOString();
+  UI.profileId = P1.id;
+}
+
+// ---------------- AI ----------------
+function aiPayload() {
+  const e = S.engagement;
+  return { engagement: { type: e.type, site: e.site, client: e.client, scope: { facilities: e.facilities, workforce: e.workforce, seasons: e.seasons } },
+    decisionStandard: { oelRule: S.decision.oelRule, test: S.decision.statTest, shiftModel: S.decision.shiftModel },
+    profiles: S.profiles.map(p => { const a = analyseProfile(p), st = a.stats; return { profile: profLabel(p), appliedOEL: a.oelAdj ? `${F(a.oelAdj)} ${a.unit}` : null, n: st.n, gm: st.gm && F(st.gm), gsd: st.gsd && F(st.gsd), x95: st.x95 && F(st.x95), x95ucl: st.x95ucl && F(st.x95ucl), en689: st.en689 && st.en689.outcome, aihaCategory: st.aihaCat, finalCategory: p.decCat, outcome: p.decOutcome, rationale: p.decRationale }; }),
+    recommendations: S.recs.map(r => ({ statement: r.statement, level: r.level, priority: r.priority })), openConcerns: S.concerns.filter(c => c.status !== 'Closed').map(c => c.desc) };
+}
+async function aiDraft() {
+  if (!AI.key) { toast('Add an API key in Settings first.'); UI.tab = 'settings'; render(); return; }
+  if (!confirm('This sends aggregated findings (no worker identities) to ' + AI.provider + '. Continue?')) return;
+  const prompt = 'You are assisting a senior occupational hygienist. Draft an executive summary (180-250 words, plain prose, no headings, no bullet points) for management from these structured findings. State key risks and priority actions. Do not invent data, limits or results not given. Where a decision is not recorded, say it is pending.\n\n' + JSON.stringify(aiPayload(), null, 1);
+  toast('Drafting\u2026');
+  try {
+    let text = '';
+    if (AI.provider === 'anthropic') {
+      const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': AI.key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' }, body: JSON.stringify({ model: AI.model, max_tokens: 1200, messages: [{ role: 'user', content: prompt }] }) });
+      const j = await r.json(); if (!r.ok) throw new Error(j.error ? j.error.message : r.status); text = j.content.filter(c => c.type === 'text').map(c => c.text).join('\n');
+    } else {
+      const r = await fetch('https://api.openai.com/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', 'authorization': 'Bearer ' + AI.key }, body: JSON.stringify({ model: AI.model, messages: [{ role: 'user', content: prompt }] }) });
+      const j = await r.json(); if (!r.ok) throw new Error(j.error ? j.error.message : r.status); text = j.choices[0].message.content;
+    }
+    S.report.summary = text.trim(); S.report.summaryIsAI = true; commit('AI draft', 'Executive summary drafted by ' + AI.provider + ' ' + AI.model);
+    toast('Draft added. Review it before issue.');
+  } catch (err) { toast('AI request failed: ' + err.message); }
+}
+
+// ---------------- events ----------------
+document.addEventListener('change', async ev => {
+  const el = ev.target, ds = el.dataset || {};
+  if (ds.ai) { AI[ds.ai] = el.type === 'checkbox' ? el.checked : el.value; saveAI(); scheduleRender(); return; }
+  if (ds.arr) { const arr = getPath(S, ds.arr) || []; const v = el.value; const nv = el.checked ? [...new Set(arr.concat(v))] : arr.filter(x => x !== v); setPath(S, ds.arr, nv); commit('Edit scope', `${ds.arr}: ${el.checked ? 'added' : 'removed'} ${v}`); return; }
+  if (ds.col && ds.id) {
+    const rec = byId(ds.col, ds.id); if (!rec) return;
+    const old = rec[ds.f], nv = readVal(el); rec[ds.f] = nv;
+    if (ds.col === 'profiles' && ds.f === 'agentId' && !rec.avg) rec.avg = defaultAvg(nv);
+    if (ds.col === 'profiles' && ['decCat', 'decOutcome', 'decRationale'].includes(ds.f)) { rec.decBy = ''; rec.decDate = ''; }
+    if (S.signoff && ds.col !== 'audit') { toast('Signed report changed: sign-off withdrawn. Issue a new revision.'); audit('Sign-off withdrawn', 'Data changed after signing'); S.signoff = null; }
+    commit('Edit ' + ds.col, `${ds.f}: ${String(old ?? '').slice(0, 60)} \u2192 ${String(nv ?? '').slice(0, 60)} [${ds.id}]`);
+    return;
+  }
+  if (ds.obj) {
+    if (ds.obj.startsWith('decision.') && S.decision.locked) return;
+    if (S.signoff && ds.obj !== 'user') { toast('Signed report changed: sign-off withdrawn. Issue a new revision.'); audit('Sign-off withdrawn', 'Data changed after signing'); S.signoff = null; }
+    const old = getPath(S, ds.obj); setPath(S, ds.obj, readVal(el));
+    commit(ds.obj === 'user' ? null : 'Edit', `${ds.obj}: ${String(old ?? '').slice(0, 60)} \u2192 ${String(readVal(el) ?? '').slice(0, 60)}`);
+  }
+});
+$('#fileIn').addEventListener('change', async ev => {
+  const f = ev.target.files[0]; ev.target.value = ''; if (!f) return;
+  try {
+    let obj = JSON.parse(await f.text());
+    if (obj.format === APP.format + '-encrypted') { const a = await ask('Encrypted file', 'Enter the passphrase used to save this file.', [{ l: 'Passphrase', t: 'password' }], 'Decrypt'); if (!a) return; obj = JSON.parse(await decryptText(obj, a[0])); }
+    if (!obj.meta || obj.meta.format !== APP.format) throw new Error('Not an OHA Studio engagement file.');
+    S = migrate(obj); anaCache.clear(); UI.profileId = null; const v = await verifyAudit();
+    saveLocal(); audit('File opened', f.name + (v.ok ? '' : ' (audit chain FAILED verification)')); UI.tab = 'home'; render();
+    toast(v.ok ? 'Engagement opened. Audit chain verified.' : 'Opened, but the audit chain failed verification.');
+  } catch (err) { toast(err.name === 'OperationError' ? 'Wrong passphrase.' : 'Could not open file: ' + err.message); }
+});
+$('#csvIn').addEventListener('change', async ev => {
+  const f = ev.target.files[0]; ev.target.value = ''; if (!f) return;
+  const rows = parseCSV(await f.text()); if (rows.length < 2) return toast('CSV has no data rows.');
+  const hd = rows[0].map(h => h.trim().toLowerCase()), ic = hd.indexOf('coc'), iv = hd.indexOf('value'), ind = hd.indexOf('nd');
+  if (ic < 0 || iv < 0) return toast('CSV needs columns named coc and value.');
+  let n = 0, miss = [];
+  rows.slice(1).forEach(r => { const s = S.samples.find(x => x.coc === r[ic].trim()); if (!s) { miss.push(r[ic]); return; } s.value = Number(r[iv]); if (ind >= 0) s.nd = /^(1|true|yes|y|nd|<)$/i.test(r[ind].trim()); n++; });
+  commit('Lab import', `${f.name}: ${n} results updated${miss.length ? ', unmatched: ' + miss.slice(0, 10).join(' ') : ''}`);
+  toast(`${n} results imported${miss.length ? `; ${miss.length} sample IDs not found` : ''}.`);
+});
+document.addEventListener('click', async ev => {
+  const b = ev.target.closest('[data-act]'); if (!b) return;
+  const act = b.dataset.act;
+  switch (act) {
+    case 'tab': UI.tab = b.dataset.tab; render(); $('#main').scrollTop = 0; $('#main').focus({ preventScroll: true }); break;
+    case 'add': { const rec = Object.assign({ id: uid(b.dataset.col.slice(0, 3)) }, JSON.parse(b.dataset.def || '{}')); S[b.dataset.col].push(rec); commit('Add ' + b.dataset.col, rec.id); break; }
+    case 'del': { if (!confirm('Delete this row?')) return; const col = b.dataset.col, id = b.dataset.id; S[col] = S[col].filter(x => x.id !== id); if (col === 'profiles') S.samples = S.samples.filter(s => s.profileId !== id); commit('Delete ' + col, id); break; }
+    case 'demo': if (S.audit.length && !confirm('Replace the current engagement with the demo?')) return; loadDemo(); anaCache.clear(); saveLocal(); audit('Demo loaded', 'Sour gas demo engagement'); UI.tab = 'home'; render(); toast('Demo loaded. Demo OEL values are placeholders, not real limits.'); break;
+    case 'newEng': if (!confirm('Start a new engagement? Save the current one to file first if you need it.')) return; S = blank(); anaCache.clear(); saveLocal(); UI.tab = 'engagement'; render(); break;
+    case 'lockStd': { if (!S.engagement.principal) { toast('Record the principal hygienist first.'); return; } S.decision.locked = true; S.decision.lockedBy = S.user || S.engagement.principal; S.decision.lockedAt = new Date().toISOString(); commit('Decision standard locked', JSON.stringify({ rule: S.decision.oelRule, test: S.decision.statTest, shift: S.decision.shiftModel })); break; }
+    case 'unlockStd': { const a = await ask('Unlock decision standard', 'Changing the decision standard after agreement needs a recorded reason and client re-approval.', [{ l: 'Reason', t: 'area' }], 'Unlock'); if (!a || !a[0].trim()) return; S.decision.locked = false; commit('Decision standard unlocked', a[0]); break; }
+    case 'loadReq': REQ_SOUR.forEach(item => { if (!S.datareq.some(d => d.item === item)) S.datareq.push({ id: uid('dr'), item, status: 'Requested' }); }); commit('Template', 'Sour gas data request list added'); break;
+    case 'loadHaz': { const n = addHazLib(); commit('Template', n + ' agents added from sour gas hazard library'); toast(n + ' agents added. Enter their OELs.'); break; }
+    case 'genProfiles': { let n = 0; S.segs.forEach(s => S.agents.forEach(a => { if (!S.profiles.some(p => p.segId === s.id && p.agentId === a.id)) { S.profiles.push({ id: uid('pf'), segId: s.id, agentId: a.id, avg: defaultAvg(a.id), scenario: 'Routine', conf: 'Medium', basis: 'Professional judgement' }); n++; } })); commit('Profiles generated', n + ' profiles'); toast(n + ' profiles created. Delete pairs that do not apply.'); break; }
+    case 'selProfile': UI.profileId = b.dataset.id; render(); break;
+    case 'recordDecision': { const p = byId('profiles', b.dataset.id); if (p.decCat === undefined || p.decCat === '' || p.decCat == null || !p.decRationale) { toast('Choose a final category and write the rationale first.'); return; } p.decBy = S.user || 'unnamed user'; p.decDate = today(); const a = analyseProfile(p); commit('Decision recorded', `${profLabel(p)}: category ${p.decCat}, ${p.decOutcome || ''}; X95 ${F(a.stats.x95)}, EN 689 ${a.stats.en689 ? a.stats.en689.outcome : 'n/a'}; engine v${OHStats.VERSION}`); toast('Decision recorded.'); break; }
+    case 'ack': { const a = await ask('Acknowledge QA flag', 'Explain why the work can proceed. The note may appear in the report limitations.', [{ l: 'Note', t: 'area' }], 'Acknowledge'); if (!a || !a[0].trim()) return; S.qaAck[b.dataset.key] = { note: a[0], by: S.user || 'unnamed user', at: new Date().toISOString() }; commit('QA flag acknowledged', b.dataset.key + ': ' + a[0]); break; }
+    case 'unack': delete S.qaAck[b.dataset.key]; commit('QA flag reopened', b.dataset.key); break;
+    case 'saveFile': download(fileBase() + '.ohs.json', JSON.stringify(S, null, 1), 'application/json'); audit('File saved', fileBase()); setSave('Saved to file ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })); break;
+    case 'saveEnc': { const a = await ask('Save encrypted file', 'AES-256-GCM with a key derived from your passphrase. There is no recovery if you lose it.', [{ l: 'Passphrase (12+ characters)', t: 'password' }, { l: 'Repeat passphrase', t: 'password' }], 'Encrypt and save'); if (!a) return; if (a[0].length < 12 || a[0] !== a[1]) { toast('Passphrases must match and be at least 12 characters.'); return; } download(fileBase() + '.encrypted.ohs.json', await encryptText(JSON.stringify(S), a[0]), 'application/json'); audit('Encrypted file saved', fileBase()); break; }
+    case 'openFile': $('#fileIn').click(); break;
+    case 'importCSV': $('#csvIn').click(); break;
+    case 'exportRecs': download(fileBase() + '_recommendations.csv', toCSV([['Recommendation', 'Hierarchy', 'Priority', 'Profile', 'Rationale', 'Owner', 'Due', 'Verification', 'Status']].concat(S.recs.map(r => [r.statement, r.level, r.priority, profLabel(byId('profiles', r.profileId)), r.rationale, r.owner, r.due, r.verify, r.status]))), 'text/csv'); break;
+    case 'exportCSVs': {
+      download(fileBase() + '_SEG_register.csv', toCSV([['SEG ID', 'Name', 'Definition', 'Criteria', 'Tasks', 'Own staff', 'Contractors', 'Shift h', 'Rotation', 'Rationale', 'Status']].concat(S.segs.map(s => [s.code, s.name, s.definition, s.criteria, s.taskList, s.headOwn, s.headCon, s.shiftH, s.rotation, s.rationale, s.status]))), 'text/csv');
+      setTimeout(() => download(fileBase() + '_results.csv', toCSV([['Sample', 'SEG', 'Agent', 'Averaging', 'Date', 'Worker', 'Duration min', 'Result', 'ND', 'Unit', 'Condition', 'Blank', 'Excluded', 'Reason']].concat(S.samples.map(s => { const p = byId('profiles', s.profileId) || {}; return [s.coc, nm('segs', p.segId, 'code'), nm('agents', p.agentId), p.avg, s.date, s.worker, s.durMin, s.value, s.nd ? 'Y' : '', analyseProfile(p).unit || '', s.cond, s.blank ? 'Y' : '', s.excluded ? 'Y' : '', s.exclReason]; }))), 'text/csv'), 400);
+      break;
+    }
+    case 'exportPkg': {
+      const pkg = { format: 'ohastudio-exposure-package', version: 1, exported: new Date().toISOString(), engine: OHStats.VERSION, site: S.engagement.site, client: S.engagement.client, decisionStandard: S.decision, agents: S.agents, oels: S.oels, segs: S.segs,
+        profiles: S.profiles.map(p => { const a = analyseProfile(p); return { ...p, label: profLabel(p), appliedOEL: a.oelAdj, unit: a.unit, oelSource: a.sel.oel && a.sel.oel.source, stats: Object.fromEntries(Object.entries(a.stats).filter(([k]) => k !== 'plot')), reassessMonths: reassessMonths(p) }; }),
+        samples: S.samples, recommendations: S.recs, moc: S.moc, handover: S.handover };
+      download(fileBase() + '_exposure_package.json', JSON.stringify(pkg, null, 1), 'application/json'); audit('Exposure package exported', fileBase()); break;
+    }
+    case 'genReport': UI.reportHtml = reportHTML(); render(); break;
+    case 'printReport': { const fr = $('#repFrame'); if (fr && fr.contentWindow) fr.contentWindow.print(); break; }
+    case 'docReport': download(fileBase() + '_report.doc', UI.reportHtml.replace('<html lang="en">', '<html lang="en" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word">'), 'application/msword'); break;
+    case 'htmlReport': download(fileBase() + '_report.html', UI.reportHtml, 'text/html'); break;
+    case 'sign': {
+      const a = await ask('Sign and freeze', 'This records your name, credentials, the time and a SHA-256 hash of the current data. Any later change withdraws the sign-off.', [{ l: 'Name', v: S.engagement.principal }, { l: 'Credentials', v: '' }], 'Sign');
+      if (!a || !a[0].trim()) return; const hash = await snapshotHash();
+      S.signoff = { name: a[0], credentials: a[1], at: new Date().toISOString(), hash }; commit('Report signed', `${a[0]} (${a[1]}), snapshot ${hash}`); UI.reportHtml = ''; toast('Signed. Generate the preview to issue the report.'); break;
+    }
+    case 'unsign': { const a = await ask('Withdraw sign-off', 'The report returns to draft. Give the reason and set the next revision letter.', [{ l: 'Reason', t: 'area' }], 'Withdraw'); if (!a || !a[0].trim()) return; S.signoff = null; S.report.revision = String.fromCharCode((S.report.revision || 'A').charCodeAt(0) + 1); commit('Sign-off withdrawn', a[0]); break; }
+    case 'verifyAudit': { await auditQ; const v = await verifyAudit(); toast(v.ok ? `Audit chain intact (${v.n} entries).` : `Audit chain broken at entry ${v.at + 1}.`); break; }
+    case 'aiDraft': aiDraft(); break;
+  }
+});
+window.addEventListener('beforeunload', () => saveLocal());
+
+// ---------------- start ----------------
+render();
+setSave(S.audit.length ? 'Restored from this browser' : '');
+
+</script>
+</body>
+</html>
